@@ -616,7 +616,14 @@ $(document).ready(function(){
 </tr>
 
 
+<tr >
+<td class="tabletd"> Maternal, Newborn and Child Health </td>
+<td> Maternal, Newborn and Child Health Indicator Report </td>
+<td>At site</td>
+<td><a href="${pageContext.request.contextPath}/module/rwandareports/register_MCHIndicatorReport.form" onclick=msgreg(this)>(Re) register</a></td>
+<td><a href="${pageContext.request.contextPath}/module/rwandareports/remove_MCHIndicatorReport.form" onclick=msgrem(this)>Remove</a></td>
 
+</tr>
 </table>
 <%@ include file="/WEB-INF/template/footer.jsp"%>
 

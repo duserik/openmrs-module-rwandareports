@@ -1006,4 +1006,18 @@ public class RwandaSetupReportsFormController {
 		new SetupHMISIndicatorMonthlyReport().delete();
 		return new ModelAndView(new RedirectView("rwandareports.form"));
 	}
+
+	@RequestMapping("/module/rwandareports/register_MCHIndicatorReport")
+	public ModelAndView registerMCHIndicatorReport() throws Exception {
+		new SetupMCHIndicatorReport().setup();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+
+	@RequestMapping("/module/rwandareports/remove_MCHIndicatorReport")
+	public ModelAndView removeMCHIndicatorReport() throws Exception {
+		new SetupMCHIndicatorReport().delete();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+
+
 }

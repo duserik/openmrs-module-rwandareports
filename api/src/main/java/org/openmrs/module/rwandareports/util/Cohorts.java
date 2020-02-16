@@ -2631,5 +2631,57 @@ public class Cohorts {
 
 		return birthdate;
 	}
+	public static SqlCohortDefinition createParameterizedLocationAndProgramCohort(String name,Program program) {
+
+		SqlCohortDefinition location = new SqlCohortDefinition();
+		location.setQuery("select p.patient_id from patient p, person_attribute pa, person_attribute_type pat, patient_program pp where p.patient_id = pa.person_id and pp.patient_id = pa.person_id and pp.date_completed is null and pp.program_id="+program.getProgramId()+" and pat.format ='org.openmrs.Location' and pa.voided = 0 and pat.person_attribute_type_id = pa.person_attribute_type_id and pa.value = :location");
+		location.setName(name);
+		location.addParameter(new Parameter("location", "location", Location.class));
+		return location;
+	}
+	public static SqlCohortDefinition getPatientsWithCodedObservationsBetweenStartDateAndEndDate(String name, Concept conceptQuestion,List<Concept> conceptAnswers) {
+		SqlCohortDefinition obsBetweenStartDateAndEndDate = new SqlCohortDefinition();
+
+		StringBuilder query = new StringBuilder("select distinct o.person_id from obs o where o.concept_id= ");
+
+		query.append(conceptQuestion.getConceptId());
+
+		query.append(" and o.voided=0 and o.obs_datetime>= :startDate and o.obs_datetime<= :endDate and o.value_coded in (");
+		int i=0;
+		StringBuilder conceptIds=new StringBuilder();
+		for (Concept c:conceptAnswers) {
+			if (i == 0) {
+				conceptIds.append(c.getConceptId());
+			} else {
+				conceptIds.append(",");
+				conceptIds.append(c.getConceptId());
+			}
+			i++;
+		}
+		query.append(conceptIds);
+		query.append(")");
+
+		obsBetweenStartDateAndEndDate.setQuery(query.toString());
+		obsBetweenStartDateAndEndDate.addParameter(new Parameter("startDate", "startDate", Date.class));
+		obsBetweenStartDateAndEndDate.addParameter(new Parameter("endDate", "endDate", Date.class));
+
+		return obsBetweenStartDateAndEndDate;
+	}
+
+
+	public static SqlCohortDefinition getPatientsWithObsByStartDateEndDate(String name, Concept concept) {
+		SqlCohortDefinition patientWithObs = new SqlCohortDefinition();
+
+		StringBuilder query = new StringBuilder("select distinct person_id from obs where concept_id = ");
+		query.append(concept.getId());
+		query.append(" and voided=0 and obs_datetime>= :startDate and obs_datetime<= :endDate");
+		patientWithObs.setQuery(query.toString());
+		patientWithObs.setName(name);
+		patientWithObs.addParameter(new Parameter("startDate", "startDate", Date.class));
+		patientWithObs.addParameter(new Parameter("endDate", "endDate", Date.class));
+
+
+		return patientWithObs;
+	}
 
 }

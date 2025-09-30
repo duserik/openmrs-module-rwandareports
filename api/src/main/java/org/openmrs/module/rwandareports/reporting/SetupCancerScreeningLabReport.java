@@ -50,6 +50,7 @@ public class SetupCancerScreeningLabReport {
 
     private List<Form> resultFormsList = new ArrayList<Form>();
     private Concept specimenCode;
+    private Concept otherSampleCode;
     private Concept screeningThrough;
     private Concept otherLabTestResult;
 
@@ -178,7 +179,13 @@ public class SetupCancerScreeningLabReport {
 
         dataSetDefinition.addColumn(RowPerPatientColumns.getRecentEncounter("recentencounterLocation", resultFormsList,LabEncounterTypes,"dd/MM/yyyy", new LocationEncounterFilter()), new HashMap<String, Object>());
 
-        dataSetDefinition.addColumn(RowPerPatientColumns.getAllObservationValuesAfterStartDateAndBeforeEndDate("specimenCode",specimenCode,"dd/MM/yyyy",null,null),ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        dataSetDefinition.addColumn(RowPerPatientColumns.getMostRecentInPeriod("specimenCode",specimenCode,null,null,"dd/MM/yyyy"),ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+
+        dataSetDefinition.addColumn(RowPerPatientColumns.getMostRecentInPeriod("otherSampleCode",otherSampleCode,null,null,"dd/MM/yyyy"),ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+
+//        dataSetDefinition.addColumn(RowPerPatientColumns.getAllObservationValuesAfterStartDateAndBeforeEndDate("specimenCode",specimenCode,"dd/MM/yyyy",null,null),ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+//
+//        dataSetDefinition.addColumn(RowPerPatientColumns.getAllObservationValuesAfterStartDateAndBeforeEndDate("otherSampleCode",otherSampleCode,"dd/MM/yyyy",null,null),ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
 //        dataSetDefinition.addColumn(RowPerPatientColumns);
@@ -235,6 +242,7 @@ public class SetupCancerScreeningLabReport {
         HPVNegative = Context.getConceptService().getConceptByUuid("64c23192-54e4-4750-9155-2ed0b736a0db");
         HPVFailedResults = Context.getConceptService().getConceptByUuid("3b989534-ca6b-4bef-b99c-cd8397b1cdbe");
         specimenCode = Context.getConceptService().getConceptByUuid("16cd65e3-45af-4291-88fd-fe4d91847e4f");
+        otherSampleCode = Context.getConceptService().getConceptByUuid("90c2ef4d-e4f3-4ab1-80b8-856dbf1b90e2");
         screeningThrough = Context.getConceptService().getConceptByUuid("7e4e6554-d6c5-4ca3-b371-49806a754992");
         otherLabTestResult = Context.getConceptService().getConceptByUuid("3ce1ca8a-26fe-102b-80cb-0017a47871b2");
 

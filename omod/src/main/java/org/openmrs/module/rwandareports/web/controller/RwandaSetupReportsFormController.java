@@ -929,37 +929,37 @@ public class RwandaSetupReportsFormController {
 	}
 
 
-//		@RequestMapping("/module/rwandareports/register_CancerScreeningSMSReport")
-//	public ModelAndView registerCancerScreeningSMSReport() throws Exception {
-//		new SetupCancerScreeningSMSReport().setup();
-//		return new ModelAndView(new RedirectView("rwandareports.form"));
-//	}
-//
-//	@RequestMapping("/module/rwandareports/remove_CancerScreeningSMSReport")
-//	public ModelAndView removeCancerScreeningSMSReport() throws Exception {
-//		new SetupCancerScreeningSMSReport().delete();
-//		return new ModelAndView(new RedirectView("rwandareports.form"));
-//	}
-//	@RequestMapping("/module/rwandareports/register_SetupCancerScreeningLabReport")
-//	public ModelAndView registerCancerScreeningLabReport() throws Exception {
-//		new SetupCancerScreeningLabReport().setup();
-//		return new ModelAndView(new RedirectView("rwandareports.form"));
-//	}
-//	@RequestMapping("/module/rwandareports/remove_CancerScreeningLabReport")
-//	public ModelAndView removeCancerScreeningLabReport() throws Exception {
-//		new SetupCancerScreeningLabReport().delete();
-//		return new ModelAndView(new RedirectView("rwandareports.form"));
-//	}
-//	@RequestMapping("/module/rwandareports/register_CancerScreeningProgramIndicatorReport")
-//	public ModelAndView registerCancerScreeningProgramIndicatorReport() throws Exception {
-//		new SetupCancerScreeningProgramIndicatorReport().setup();
-//		return new ModelAndView(new RedirectView("rwandareports.form"));
-//	}
-//	@RequestMapping("/module/rwandareports/remove_CancerScreeningProgramIndicatorReport")
-//	public ModelAndView removeCancerScreeningProgramIndicatorReport() throws Exception {
-//		new SetupCancerScreeningProgramIndicatorReport().delete();
-//		return new ModelAndView(new RedirectView("rwandareports.form"));
-//	}
+		@RequestMapping("/module/rwandareports/register_CancerScreeningSMSReport")
+	public ModelAndView registerCancerScreeningSMSReport() throws Exception {
+		new SetupCancerScreeningSMSReport().setup();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+
+	@RequestMapping("/module/rwandareports/remove_CancerScreeningSMSReport")
+	public ModelAndView removeCancerScreeningSMSReport() throws Exception {
+		new SetupCancerScreeningSMSReport().delete();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+	@RequestMapping("/module/rwandareports/register_SetupCancerScreeningLabReport")
+	public ModelAndView registerCancerScreeningLabReport() throws Exception {
+		new SetupCancerScreeningLabReport().setup();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+	@RequestMapping("/module/rwandareports/remove_CancerScreeningLabReport")
+	public ModelAndView removeCancerScreeningLabReport() throws Exception {
+		new SetupCancerScreeningLabReport().delete();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+	@RequestMapping("/module/rwandareports/register_CancerScreeningProgramIndicatorReport")
+	public ModelAndView registerCancerScreeningProgramIndicatorReport() throws Exception {
+		new SetupCancerScreeningProgramIndicatorReport().setup();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
+	@RequestMapping("/module/rwandareports/remove_CancerScreeningProgramIndicatorReport")
+	public ModelAndView removeCancerScreeningProgramIndicatorReport() throws Exception {
+		new SetupCancerScreeningProgramIndicatorReport().delete();
+		return new ModelAndView(new RedirectView("rwandareports.form"));
+	}
 
 	@RequestMapping("/module/rwandareports/register_PathologyRequestReport.form")
 	public ModelAndView registerPathologyRequestReport() throws Exception {

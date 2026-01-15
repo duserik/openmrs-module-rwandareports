@@ -366,7 +366,7 @@ $(document).ready(function(){
 <td><a href="${pageContext.request.contextPath}/module/rwandareports/remove_NCDsHMISReport.form" onclick=msgrem(this)>Remove</a></td>
 </tr>
 <tr>
-<td rowspan="29" class="tabletd">Oncology</td>
+<td rowspan="30" class="tabletd">Oncology</td>
 <td>ONC-Chemotherapy Treatment Administration Plan</td>
 <td>At site</td>
 <td><a href="${pageContext.request.contextPath}/module/rwandareports/register_treatmentAdministrationPlan.form" onclick=msgreg(this)>(Re) register</a></td>
@@ -486,6 +486,13 @@ $(document).ready(function(){
 <td>central</td>
 <td><a href="${pageContext.request.contextPath}/module/rwandareports/register_HMISCancerScreeningIndicatorReport.form" onclick=msgreg(this)>(Re) register</a></td>
 <td><a href="${pageContext.request.contextPath}/module/rwandareports/remove_HMISCancerScreeningIndicatorReport.form" onclick=msgrem(this)>Remove</a></td>
+</tr>
+<tr>
+
+<td>ONC - HMIS Cancer Screening Monthly Dashboard Report</td>
+<td>central</td>
+<td><a href="${pageContext.request.contextPath}/module/rwandareports/register_HMISCancerScreeningDashboardreport.form" onclick=msgreg(this)>(Re) register</a></td>
+<td><a href="${pageContext.request.contextPath}/module/rwandareports/remove_HMISCancerScreeningDashboardreport.form" onclick=msgrem(this)>Remove</a></td>
 </tr>
 <tr>
 <td>ONC - Cancer Screening Program Indicator Report</td>

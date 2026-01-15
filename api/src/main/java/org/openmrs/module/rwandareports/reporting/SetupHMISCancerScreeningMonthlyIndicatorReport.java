@@ -162,6 +162,16 @@ public class SetupHMISCancerScreeningMonthlyIndicatorReport {
 
     private Concept DrugPrescribed;
 
+    private Concept HPVPositive16;
+    private Concept HPVPositive18;
+    private Concept HPVPositiveType;
+
+    private Concept typeOfTransformationZone;
+    private Concept transformationZoneType3;
+    private Concept followupReason;
+    private Concept postTreatmentFollowup;
+    private Concept hpvFollowupAt2Years;
+
     public void setup() throws Exception {
 
         setUpProperties();
@@ -2595,6 +2605,151 @@ SqlCohortDefinition screenedForCervicalCancerWithHPVResult=Cohorts.getPatientsWi
 
         dsd.addColumn("B1650", "Number of people with 50 years and above with biopsy confirmed Breast cancer", new Mapped(
                 numberOfBiopsyConfirmedBreastCancerIndicator50, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+
+        // C18 Women tested HPV positive, Type 16 and/or 18
+
+        SqlCohortDefinition numberOfWomentesteHPVPositive16 = Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("numberOfWomentesteHPVPositive16",oncologyScreeningLabResultsForms,HPVPositiveType,HPVPositive16);
+        SqlCohortDefinition numberOfWomentesteHPVPositive18 = Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("numberOfWomentesteHPVPositive16",oncologyScreeningLabResultsForms,HPVPositiveType,HPVPositive18);
+
+
+        CompositionCohortDefinition womenTestedHPVPositive16Or18HIVPositive = new CompositionCohortDefinition();
+        womenTestedHPVPositive16Or18HIVPositive.setName("womenTestedHPVPositive16Or18HIVPositive");
+        womenTestedHPVPositive16Or18HIVPositive.addParameter(new Parameter("startDate", "startDate", Date.class));
+        womenTestedHPVPositive16Or18HIVPositive.addParameter(new Parameter("endDate", "endDate", Date.class));
+        womenTestedHPVPositive16Or18HIVPositive.getSearches().put("1",new Mapped<CohortDefinition>(numberOfWomentesteHPVPositive16, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        womenTestedHPVPositive16Or18HIVPositive.getSearches().put("2",new Mapped<CohortDefinition>(numberOfWomentesteHPVPositive18, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        womenTestedHPVPositive16Or18HIVPositive.getSearches().put("3",new Mapped<CohortDefinition>(screenedForCervicalCancerWithPositiveHPVResult, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        womenTestedHPVPositive16Or18HIVPositive.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        womenTestedHPVPositive16Or18HIVPositive.setCompositionString("(1 or 2) and 3 and 4");
+
+        CohortIndicator womenTestedHPVPositive16Or18HIVPositiveIndicator = Indicators.newCountIndicator("womenTestedHPVPositive16Or18HIVPositiveIndicator",
+                womenTestedHPVPositive16Or18HIVPositive, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C18P", "HIV positive women tested HPV positive, Type 16 and/or 18", new Mapped(
+                womenTestedHPVPositive16Or18HIVPositiveIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+        CompositionCohortDefinition womenTestedHPVPositive16Or18HIVNegative = new CompositionCohortDefinition();
+        womenTestedHPVPositive16Or18HIVNegative.setName("womenTestedHPVPositive16Or18HIVNegative");
+        womenTestedHPVPositive16Or18HIVNegative.addParameter(new Parameter("startDate", "startDate", Date.class));
+        womenTestedHPVPositive16Or18HIVNegative.addParameter(new Parameter("endDate", "endDate", Date.class));
+        womenTestedHPVPositive16Or18HIVNegative.getSearches().put("1",new Mapped<CohortDefinition>(numberOfWomentesteHPVPositive16, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        womenTestedHPVPositive16Or18HIVNegative.getSearches().put("2",new Mapped<CohortDefinition>(numberOfWomentesteHPVPositive18, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        womenTestedHPVPositive16Or18HIVNegative.getSearches().put("3",new Mapped<CohortDefinition>(screenedForCervicalCancerWithPositiveHPVResult, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        womenTestedHPVPositive16Or18HIVNegative.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        womenTestedHPVPositive16Or18HIVNegative.setCompositionString("(1 or 2) and 3 and NOT 4");
+
+        CohortIndicator womenTestedHPVPositive16Or18HIVNegativeIndicator = Indicators.newCountIndicator("womenTestedHPVPositive16Or18HIVNegativeIndicator",
+                womenTestedHPVPositive16Or18HIVNegative, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C18N", "HIV negative women tested HPV positive, Type 16 and/or 18", new Mapped(
+                womenTestedHPVPositive16Or18HIVNegativeIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+        // C19 Women tested HPV positive, Type 16 and/or 18
+
+
+        SqlCohortDefinition patientsWithType3TransformationZone = Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("patientsWithType3TransformationZone",cervicalCancerScreeningFollowupAndExaminationForms,typeOfTransformationZone,transformationZoneType3);
+
+        CompositionCohortDefinition HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels = new CompositionCohortDefinition();
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.setName("HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels");
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("1",new Mapped<CohortDefinition>(patientsWithType3TransformationZone, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("2",new Mapped<CohortDefinition>(screenedForCervicalCancerWithVIANegativeResult, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("3",new Mapped<CohortDefinition>(screenedForCervicalCancerWithLEEPAsReasonsForReferral, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.setCompositionString("1 and 2 and 3 and 4");
+
+        CohortIndicator HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevelsIndicator = Indicators.newCountIndicator("HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevelsIndicator",
+                HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C19P", "HIV positve Women tested VIA negative (TZ3) referred for LEEP to other levels", new Mapped(
+                HIVPositivewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevelsIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+        CompositionCohortDefinition HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels = new CompositionCohortDefinition();
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.setName("HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels");
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("1",new Mapped<CohortDefinition>(patientsWithType3TransformationZone, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("2",new Mapped<CohortDefinition>(screenedForCervicalCancerWithVIANegativeResult, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("3",new Mapped<CohortDefinition>(screenedForCervicalCancerWithLEEPAsReasonsForReferral, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels.setCompositionString("1 and 2 and 3 and Not 4");
+
+        CohortIndicator HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevelsIndicator = Indicators.newCountIndicator("HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevelsIndicator",
+                HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevels, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C19N", "HIV negative Women tested VIA negative (TZ3) referred for LEEP to other levels", new Mapped(
+                HIVNegativewomenTestedVIANegativeTZ3ReferredForLEEPToOtherLevelsIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+
+        // C20 Women who received post-treatment follow-up
+
+
+        SqlCohortDefinition patientsWithPostTreatmentFollowup = Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("patientsWithType3TransformationZone",cervicalCancerScreeningFollowupAndExaminationForms,followupReason,postTreatmentFollowup);
+
+        CompositionCohortDefinition HIVPositivepatientsWithPostTreatmentFollowup = new CompositionCohortDefinition();
+        HIVPositivepatientsWithPostTreatmentFollowup.setName("HIVPositivepatientsWithPostTreatmentFollowup");
+        HIVPositivepatientsWithPostTreatmentFollowup.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVPositivepatientsWithPostTreatmentFollowup.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVPositivepatientsWithPostTreatmentFollowup.getSearches().put("1",new Mapped<CohortDefinition>(patientsWithPostTreatmentFollowup, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVPositivepatientsWithPostTreatmentFollowup.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        HIVPositivepatientsWithPostTreatmentFollowup.setCompositionString("1 and 2");
+
+        CohortIndicator HIVPositivepatientsWithPostTreatmentFollowupIndicator = Indicators.newCountIndicator("HIVPositivepatientsWithPostTreatmentFollowupIndicator",
+                HIVPositivepatientsWithPostTreatmentFollowup, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C20P", "HIV positive Women who received post-treatment follow-up", new Mapped(
+                HIVPositivepatientsWithPostTreatmentFollowupIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+        CompositionCohortDefinition HIVNegativpatientsWithPostTreatmentFollowup = new CompositionCohortDefinition();
+        HIVNegativpatientsWithPostTreatmentFollowup.setName("HIVNegativpatientsWithPostTreatmentFollowup");
+        HIVNegativpatientsWithPostTreatmentFollowup.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVNegativpatientsWithPostTreatmentFollowup.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVNegativpatientsWithPostTreatmentFollowup.getSearches().put("1",new Mapped<CohortDefinition>(patientsWithPostTreatmentFollowup, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVNegativpatientsWithPostTreatmentFollowup.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        HIVNegativpatientsWithPostTreatmentFollowup.setCompositionString("1 and Not 2");
+
+        CohortIndicator HIVNegativpatientsWithPostTreatmentFollowupIndicator = Indicators.newCountIndicator("HIVNegativpatientsWithPostTreatmentFollowupIndicator",
+                HIVNegativpatientsWithPostTreatmentFollowup, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C20N", "HIV negative Women who received post-treatment follow-up", new Mapped(
+                HIVNegativpatientsWithPostTreatmentFollowupIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+        // C21 HPV positive women who received a 2-year follow-up test
+
+
+        SqlCohortDefinition patientsWhoHadHPVFollowUpAt2Years = Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("patientsWithType3TransformationZone",cervicalCancerScreeningFollowupAndExaminationForms,followupReason,hpvFollowupAt2Years);
+
+        CompositionCohortDefinition HIVPositivepatientsWhoHadHPVFollowUpAt2Years = new CompositionCohortDefinition();
+        HIVPositivepatientsWhoHadHPVFollowUpAt2Years.setName("HIVPositivepatientsWhoHadHPVFollowUpAt2Years");
+        HIVPositivepatientsWhoHadHPVFollowUpAt2Years.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVPositivepatientsWhoHadHPVFollowUpAt2Years.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVPositivepatientsWhoHadHPVFollowUpAt2Years.getSearches().put("1",new Mapped<CohortDefinition>(patientsWhoHadHPVFollowUpAt2Years, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVPositivepatientsWhoHadHPVFollowUpAt2Years.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        HIVPositivepatientsWhoHadHPVFollowUpAt2Years.setCompositionString("1 and 2");
+
+        CohortIndicator HIVPositivepatientsWhoHadHPVFollowUpAt2YearsIndicator = Indicators.newCountIndicator("HIVPositivepatientsWhoHadHPVFollowUpAt2YearsIndicator",
+                HIVPositivepatientsWhoHadHPVFollowUpAt2Years, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C21P", "HIV positive HPV positive women who received a 2-year follow-up test", new Mapped(
+                HIVPositivepatientsWhoHadHPVFollowUpAt2YearsIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+        CompositionCohortDefinition HIVNegativepatientsWhoHadHPVFollowUpAt2Years = new CompositionCohortDefinition();
+        HIVNegativepatientsWhoHadHPVFollowUpAt2Years.setName("HIVNegativepatientsWhoHadHPVFollowUpAt2Years");
+        HIVNegativepatientsWhoHadHPVFollowUpAt2Years.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVNegativepatientsWhoHadHPVFollowUpAt2Years.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVNegativepatientsWhoHadHPVFollowUpAt2Years.getSearches().put("1",new Mapped<CohortDefinition>(patientsWhoHadHPVFollowUpAt2Years, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVNegativepatientsWhoHadHPVFollowUpAt2Years.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
+
+        HIVNegativepatientsWhoHadHPVFollowUpAt2Years.setCompositionString("1 and Not 2");
+
+        CohortIndicator HIVNegativepatientsWhoHadHPVFollowUpAt2YearsIndicator = Indicators.newCountIndicator("HIVNegativepatientsWhoHadHPVFollowUpAt2YearsIndicator",
+                HIVNegativepatientsWhoHadHPVFollowUpAt2Years, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate},"));
+        dsd.addColumn("C21N", "HIV negative HPV positive women who received a 2-year follow-up test", new Mapped(
+                HIVNegativepatientsWhoHadHPVFollowUpAt2YearsIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+
+
     }
 
     private void setUpProperties() {
@@ -2648,6 +2803,19 @@ SqlCohortDefinition screenedForCervicalCancerWithHPVResult=Cohorts.getPatientsWi
         testResult=Context.getConceptService().getConceptByUuid("bfb3eb1e-db98-4846-9915-0168511c6298");
         HPVpositive=Context.getConceptService().getConceptByUuid("1b4a5f67-6106-4a4d-a389-2f430be543e4");
         HPVNegative =Context.getConceptService().getConceptByUuid("64c23192-54e4-4750-9155-2ed0b736a0db");
+        HPVPositive16 = Context.getConceptService().getConceptByUuid("059fddd3-711f-47ab-818f-087984aeecc3");
+        HPVPositive18 = Context.getConceptService().getConceptByUuid("b672c3ff-96c9-41cd-9ae6-aa0811ce347f");
+        HPVPositiveType = Context.getConceptService().getConceptByUuid("1b4a5f67-6106-4a4d-a389-2f430be543e4");
+
+        typeOfTransformationZone = Context.getConceptService().getConceptByUuid("af1421bc-333e-449b-bab5-99a54a38490a");
+        transformationZoneType3 = Context.getConceptService().getConceptByUuid("cc6497b1-8f5b-48be-ac95-d5e142e6e663");
+        followupReason = Context.getConceptService().getConceptByUuid("2e788aae-d93e-4d7c-bd3b-e1141f1915c7");
+        postTreatmentFollowup = Context.getConceptService().getConceptByUuid("c96d377e-133d-4c4e-b1d7-f03a8621d5f8");
+        hpvFollowupAt2Years = Context.getConceptService().getConceptByUuid("e43a0fc4-b995-44f7-96cb-5af34b600f50");
+
+
+
+
         testResults.add(HPVpositive);
         testResults.add(HPVNegative);
         positiveTestResults.add(HPVpositive);

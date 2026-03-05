@@ -2,6 +2,7 @@ package org.openmrs.module.rwandareports.reporting;
 
 import org.openmrs.Concept;
 import org.openmrs.Form;
+import org.openmrs.Location;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.reporting.cohort.definition.*;
 import org.openmrs.module.reporting.dataset.definition.CohortIndicatorDataSetDefinition;
@@ -23,11 +24,25 @@ import org.openmrs.module.rwandareports.widget.LocationHierarchy;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 public class SetupHMISCancerScreeningDashboardreport {
     GlobalPropertiesManagement gp = new GlobalPropertiesManagement();
+
+    private static class IndicatorSpec {
+        private final String key;
+        private final String label;
+        private final Mapped<CohortIndicator> mappedIndicator;
+
+        private IndicatorSpec(String key, String label, Mapped<CohortIndicator> mappedIndicator) {
+            this.key = key;
+            this.label = label;
+            this.mappedIndicator = mappedIndicator;
+        }
+    }
 
     // properties
 
@@ -223,8 +238,25 @@ public class SetupHMISCancerScreeningDashboardreport {
         monthlyProps.put("repeatingSections", "sheet:1,dataset:Encounter dashboard Cancer Screening Data Set");
         monthlyProps.put("sortWeight","5000");
         mothlyDesign.setProperties(monthlyProps);
+        if (mothlyDesign.getCreator() == null) {
+            mothlyDesign.setCreator(Context.getAuthenticatedUser());
+        }
+        if (mothlyDesign.getDateCreated() == null) {
+            mothlyDesign.setDateCreated(new Date());
+        }
         Helper.saveReportDesign(mothlyDesign);
 
+        PeriodIndicatorReportDefinition pid = new PeriodIndicatorReportDefinition();
+        pid.setName("ONC - DHIS2 Cancer Screening Monthly Indicator Report");
+        pid.addParameter(new Parameter("startDate", "Start Date", Date.class));
+        pid.addParameter(new Parameter("endDate", "End Date", Date.class));
+        pid.addParameter(new Parameter("location", "Location", Location.class));
+        pid.setupDataSetDefinition();
+        CohortIndicatorDataSetDefinition pidDsd = pid.getIndicatorDataSetDefinition();
+        for (IndicatorSpec spec : buildIndicatorSpecs().values()) {
+            pidDsd.addColumn(spec.key, spec.label, spec.mappedIndicator, "");
+        }
+        Helper.saveReportDefinition(pid);
     }
 
     public void delete() {
@@ -235,6 +267,7 @@ public class SetupHMISCancerScreeningDashboardreport {
             }
         }
         Helper.purgeReportDefinition("ONC - dashboard Cancer Screening Monthly Indicator Report");
+        Helper.purgeReportDefinition("ONC - DHIS2 Cancer Screening Monthly Indicator Report");
 
     }
 
@@ -281,6 +314,14 @@ public class SetupHMISCancerScreeningDashboardreport {
     }
 
     private void createMonthlyIndicators(CohortIndicatorDataSetDefinition dsd) {
+        Map<String, IndicatorSpec> indicatorSpecs = buildIndicatorSpecs();
+        for (IndicatorSpec spec : indicatorSpecs.values()) {
+            dsd.addColumn(spec.key, spec.label, spec.mappedIndicator, "");
+        }
+    }
+
+    private Map<String, IndicatorSpec> buildIndicatorSpecs() {
+        Map<String, IndicatorSpec> indicatorSpecs = new LinkedHashMap<String, IndicatorSpec>();
 
         SqlCohortDefinition screenedForCervicalCancerWithHPV=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("screenedForCervicalCancerWithHPV",screeningCervicalForms,screeningType,HPV);
 
@@ -293,7 +334,7 @@ public class SetupHMISCancerScreeningDashboardreport {
 //        SqlCohortDefinition hivUnknownPatient=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("hivUnknownPatient",screeningCervicalForms,hivStatus,unknown);
 
         SqlCohortDefinition VIAPositiveLEEPResults=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("VIAPositiveLEEPResults",screeningCervicalForms,VIAResults,VIAAndEligibleForLEEP);
-        SqlCohortDefinition VIACancerSuspectedResults=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("VIACancerSuspectedResults",screeningCervicalForms,VIAResults,suspecancerDiagnosis);
+        SqlCohortDefinition VIACancerSuspectedResults = Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("VIACancerSuspectedResults",screeningCervicalForms,VIAResults,suspecancerDiagnosis);
         SqlCohortDefinition VIAAndEligibleForThermalAblationResults=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("VIAAndEligibleForThermalAblationResults",screeningCervicalForms,VIAResults,VIAAndEligibleForThermalAblation);
         SqlCohortDefinition VIANegativeResults=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("VIANegativeResults",screeningCervicalForms,VIAResults,VIANegative);
         SqlCohortDefinition biopsyPerformsResults=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("biopsyPerformsResults",screeningCervicalForms,biopsyperformed,yes);
@@ -319,9 +360,10 @@ public class SetupHMISCancerScreeningDashboardreport {
                 femaleVIAPositiveReferredForLEEP, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D1", "Number of screened positive women referred for LEEP & Colposcopy to other levels", new Mapped(
-                femaleVIAPositiveReferredForLEEPIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
-// ==================== D1HIVpos ====================================================
+        addIndicatorSpec(indicatorSpecs, "D1", "Number of screened positive women referred for LEEP & Colposcopy to other levels", new Mapped(
+                femaleVIAPositiveReferredForLEEPIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+
+        // ==================== D1HIVpos ====================================================
         CompositionCohortDefinition HIVposfemaleVIAPositiveReferredForLEEP=new CompositionCohortDefinition();
         HIVposfemaleVIAPositiveReferredForLEEP.setName("HIVposfemaleVIAPositiveReferredForLEEP");
         HIVposfemaleVIAPositiveReferredForLEEP.addParameter(new Parameter("startDate", "startDate", Date.class));
@@ -336,8 +378,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVposfemaleVIAPositiveReferredForLEEP, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D1HIVpos", "Number of screened HIV positive and positive women referred for LEEP & Colposcopy to other levels", new Mapped(
-                HIVposfemaleVIAPositiveReferredForLEEPIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D1HIVpos", "Number of screened HIV positive and positive women referred for LEEP & Colposcopy to other levels", new Mapped(
+                HIVposfemaleVIAPositiveReferredForLEEPIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 // ==================== D1HIVneg ====================================================
         CompositionCohortDefinition HIVnegfemaleVIAPositiveReferredForLEEP=new CompositionCohortDefinition();
         HIVnegfemaleVIAPositiveReferredForLEEP.setName("HIVnegfemaleVIAPositiveReferredForLEEP");
@@ -354,8 +396,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVnegfemaleVIAPositiveReferredForLEEP, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D1HIVneg", "Number of screened HIV negative and positive women referred for LEEP & Colposcopy to other levels", new Mapped(
-                HIVnegfemaleVIAPositiveReferredForLEEPIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D1HIVneg", "Number of screened HIV negative and positive women referred for LEEP & Colposcopy to other levels", new Mapped(
+                HIVnegfemaleVIAPositiveReferredForLEEPIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 // ==================== D2 ====================================================
@@ -373,8 +415,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 femaleSuspectedWithCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D2", "Number of women suspected with cervical cancer", new Mapped(
-                femaleSuspectedWithCervicalCancerIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D2", "Number of women suspected with cervical cancer", new Mapped(
+                femaleSuspectedWithCervicalCancerIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 // ==================== D2HIVpos ====================================================
         CompositionCohortDefinition HIVposfemaleSuspectedWithCervicalCancer=new CompositionCohortDefinition();
         HIVposfemaleSuspectedWithCervicalCancer.setName("HIVposfemaleSuspectedWithCervicalCancer");
@@ -391,8 +433,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVposfemaleSuspectedWithCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D2HIVpos", "Number of women HIV positive and suspected with cervical cancer", new Mapped(
-                HIVposfemaleSuspectedWithCervicalCancerIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D2HIVpos", "Number of women HIV positive and suspected with cervical cancer", new Mapped(
+                HIVposfemaleSuspectedWithCervicalCancerIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 // ==================== D2HIVneg ====================================================
         CompositionCohortDefinition HIVnegfemaleSuspectedWithCervicalCancer=new CompositionCohortDefinition();
         HIVnegfemaleSuspectedWithCervicalCancer.setName("HIVnegfemaleSuspectedWithCervicalCancer");
@@ -409,8 +451,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVnegfemaleSuspectedWithCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D2HIVneg", "Number of women HIV negative and suspected with cervical cancer", new Mapped(
-                HIVnegfemaleSuspectedWithCervicalCancerIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D2HIVneg", "Number of women HIV negative and suspected with cervical cancer", new Mapped(
+                HIVnegfemaleSuspectedWithCervicalCancerIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -428,8 +470,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 femaleCancerSuspectBiopsyDone, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D3", "Number of women suspected with cervical cancer who underwent biopsy", new Mapped(
-                femaleCancerSuspectBiopsyDoneIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D3", "Number of women suspected with cervical cancer who underwent biopsy", new Mapped(
+                femaleCancerSuspectBiopsyDoneIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 // ==================== D3HIVpos ====================================================
         CompositionCohortDefinition HIVposfemaleCancerSuspectBiopsyDone=new CompositionCohortDefinition();
         HIVposfemaleCancerSuspectBiopsyDone.setName("HIVposfemaleCancerSuspectBiopsyDone");
@@ -444,8 +486,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVposfemaleCancerSuspectBiopsyDone, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D3HIVpos", "Number of women HIV positive and suspected with cervical cancer who underwent biopsy", new Mapped(
-                HIVposfemaleCancerSuspectBiopsyDoneIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D3HIVpos", "Number of women HIV positive and suspected with cervical cancer who underwent biopsy", new Mapped(
+                HIVposfemaleCancerSuspectBiopsyDoneIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 // ==================== D3HIVneg ====================================================
         CompositionCohortDefinition HIVnegfemaleCancerSuspectBiopsyDone=new CompositionCohortDefinition();
         HIVnegfemaleCancerSuspectBiopsyDone.setName("HIVnegfemaleCancerSuspectBiopsyDone");
@@ -461,8 +503,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVnegfemaleCancerSuspectBiopsyDone, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D3HIVneg", "Number of women HIV negative and suspected with cervical cancer who underwent biopsy", new Mapped(
-                HIVnegfemaleCancerSuspectBiopsyDoneIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D3HIVneg", "Number of women HIV negative and suspected with cervical cancer who underwent biopsy", new Mapped(
+                HIVnegfemaleCancerSuspectBiopsyDoneIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D4 ====================================================
         CompositionCohortDefinition femaleVIACancerSuspectReferred=new CompositionCohortDefinition();
@@ -478,8 +520,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 femaleVIACancerSuspectReferred, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D4", "Number of women with Suspected cervical cancer refered to other level", new Mapped(
-                femaleVIACancerSuspectReferredIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D4", "Number of women with Suspected cervical cancer refered to other level", new Mapped(
+                femaleVIACancerSuspectReferredIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D4HIVpos ====================================================
         CompositionCohortDefinition HIVposfemaleVIACancerSuspectReferred=new CompositionCohortDefinition();
@@ -495,8 +537,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVposfemaleVIACancerSuspectReferred, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D4HIVpos", "Number of women HIV positive and with Suspected cervical cancer refered to other level", new Mapped(
-                HIVposfemaleVIACancerSuspectReferredIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D4HIVpos", "Number of women HIV positive and with Suspected cervical cancer refered to other level", new Mapped(
+                HIVposfemaleVIACancerSuspectReferredIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D4HIVneg ====================================================
         CompositionCohortDefinition HIVnegfemaleVIACancerSuspectReferred=new CompositionCohortDefinition();
@@ -513,8 +555,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVnegfemaleVIACancerSuspectReferred, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D4HIVneg", "Number of women HIV negative and with Suspected cervical cancer refered to other level", new Mapped(
-                HIVnegfemaleVIACancerSuspectReferredIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D4HIVneg", "Number of women HIV negative and with Suspected cervical cancer refered to other level", new Mapped(
+                HIVnegfemaleVIACancerSuspectReferredIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 // ==================== D5 ====================================================
@@ -534,8 +576,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HPVPositiveResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D5", "Number of women tested HPV positive", new Mapped(
-                HPVPositiveResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D5", "Number of women tested HPV positive", new Mapped(
+                HPVPositiveResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 // ==================== D5HIVpos ====================================================
@@ -554,8 +596,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVposHPVPositiveResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D5HIVpos", "Number of women HIV positive and tested HPV positive", new Mapped(
-                HIVposHPVPositiveResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D5HIVpos", "Number of women HIV positive and tested HPV positive", new Mapped(
+                HIVposHPVPositiveResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 // ==================== D5HIVneg ====================================================
@@ -575,8 +617,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVnegHPVPositiveResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D5HIVneg", "Number of women HIV negative and tested HPV positive", new Mapped(
-                HIVnegHPVPositiveResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D5HIVneg", "Number of women HIV negative and tested HPV positive", new Mapped(
+                HIVnegHPVPositiveResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -597,8 +639,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HPVResultsCompositionIndicator = Indicators.newCountIndicator("HPVResultsCompositionIndicator",
                 HPVResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D6", "Number of women who received HPV test results", new Mapped(
-                HPVResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D6", "Number of women who received HPV test results", new Mapped(
+                HPVResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -618,8 +660,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposHPVResultsCompositionIndicator = Indicators.newCountIndicator("HIVposHPVResultsCompositionIndicator",
                 HIVposHPVResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D6HIVpos", "Number of women HIV positive and who received HPV test results", new Mapped(
-                HIVposHPVResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D6HIVpos", "Number of women HIV positive and who received HPV test results", new Mapped(
+                HIVposHPVResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 // ==================== D6HIVneg ====================================================
 
 
@@ -637,8 +679,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegHPVResultsCompositionIndicator = Indicators.newCountIndicator("HIVnegHPVResultsCompositionIndicator",
                 HIVnegHPVResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D6HIVneg", "Number of women HIV negative and who received HPV test results", new Mapped(
-                HIVnegHPVResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D6HIVneg", "Number of women HIV negative and who received HPV test results", new Mapped(
+                HIVnegHPVResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D7 ====================================================
 
@@ -661,8 +703,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator VIAScreenedPositiveCompositionIndicator = Indicators.newCountIndicator("VIAScreenedPositiveCompositionIndicator",
                 VIAScreenedPositiveComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D7", "Number of women tested VIA Screen positive", new Mapped(
-                VIAScreenedPositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D7", "Number of women tested VIA Screen positive", new Mapped(
+                VIAScreenedPositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D7HIVpos ====================================================
 
@@ -681,8 +723,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposVIAScreenedPositiveCompositionIndicator = Indicators.newCountIndicator("HIVposVIAScreenedPositiveCompositionIndicator",
                 HIVposVIAScreenedPositiveComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D7HIVpos", "Number of women HIV positive and tested VIA Screen positive", new Mapped(
-                HIVposVIAScreenedPositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D7HIVpos", "Number of women HIV positive and tested VIA Screen positive", new Mapped(
+                HIVposVIAScreenedPositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D7HIVneg ====================================================
 
@@ -702,8 +744,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegVIAScreenedPositiveCompositionIndicator = Indicators.newCountIndicator("HIVnegVIAScreenedPositiveCompositionIndicator",
                 HIVnegVIAScreenedPositiveComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D7HIVneg", "Number of women HIV negative and tested VIA Screen positive", new Mapped(
-                HIVnegVIAScreenedPositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D7HIVneg", "Number of women HIV negative and tested VIA Screen positive", new Mapped(
+                HIVnegVIAScreenedPositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -723,8 +765,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator VIAScreenedCompositionIndicator = Indicators.newCountIndicator("VIAScreenedCompositionIndicator",
                 VIAScreenedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D8", "Number of women who received VIA Screen", new Mapped(
-                VIAScreenedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D8", "Number of women who received VIA Screen", new Mapped(
+                VIAScreenedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D8HIVpos ====================================================
 
@@ -742,8 +784,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposVIAScreenedCompositionIndicator = Indicators.newCountIndicator("HIVposVIAScreenedCompositionIndicator",
                 HIVposVIAScreenedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D8HIVpos", "Number of women HIV positive and who received VIA Screen", new Mapped(
-                HIVposVIAScreenedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D8HIVpos", "Number of women HIV positive and who received VIA Screen", new Mapped(
+                HIVposVIAScreenedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D8HIVneg ====================================================
 
@@ -762,8 +804,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegVIAScreenedCompositionIndicator = Indicators.newCountIndicator("HIVnegVIAScreenedCompositionIndicator",
                 HIVnegVIAScreenedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D8HIVneg", "Number of women HIV negative and who received VIA Screen", new Mapped(
-                HIVnegVIAScreenedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D8HIVneg", "Number of women HIV negative and who received VIA Screen", new Mapped(
+                HIVnegVIAScreenedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -784,8 +826,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator screeningThroughHPVCompositionIndicator = Indicators.newCountIndicator("screeningThroughHPVCompositionIndicator",
                 screeningThroughHPVComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D9", "Number of women screened with HPV", new Mapped(
-                screeningThroughHPVCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D9", "Number of women screened with HPV", new Mapped(
+                screeningThroughHPVCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D9HIVpos ====================================================
 
@@ -802,8 +844,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposscreeningThroughHPVCompositionIndicator = Indicators.newCountIndicator("HIVposscreeningThroughHPVCompositionIndicator",
                 HIVposscreeningThroughHPVComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D9HIVpos", "Number of women HIV positive and screened with HPV", new Mapped(
-                HIVposscreeningThroughHPVCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D9HIVpos", "Number of women HIV positive and screened with HPV", new Mapped(
+                HIVposscreeningThroughHPVCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 // ==================== D9HIVneg ====================================================
 
@@ -820,8 +862,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegscreeningThroughHPVCompositionIndicator = Indicators.newCountIndicator("HIVnegscreeningThroughHPVCompositionIndicator",
                 HIVnegscreeningThroughHPVComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D9HIVneg", "Number of women HIV negative and screened with HPV", new Mapped(
-                HIVnegscreeningThroughHPVCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D9HIVneg", "Number of women HIV negative and screened with HPV", new Mapped(
+                HIVnegscreeningThroughHPVCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -844,8 +886,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator CervicalCancerSuspicionAttendedCompositionIndicator = Indicators.newCountIndicator("CervicalCancerSuspicionAttendedCompositionIndicator",
                 CervicalCancerSuspicionAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D10", "Number of women for cervical cancer suspicion attended referral", new Mapped(
-                CervicalCancerSuspicionAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D10", "Number of women for cervical cancer suspicion attended referral", new Mapped(
+                CervicalCancerSuspicionAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D10HIVpos ====================================================
 
@@ -862,8 +904,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposCervicalCancerSuspicionAttendedCompositionIndicator = Indicators.newCountIndicator("HIVposCervicalCancerSuspicionAttendedCompositionIndicator",
                 HIVposCervicalCancerSuspicionAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D10HIVpos", "Number of women HIV positive and for cervical cancer suspicion attended referral", new Mapped(
-                HIVposCervicalCancerSuspicionAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D10HIVpos", "Number of women HIV positive and for cervical cancer suspicion attended referral", new Mapped(
+                HIVposCervicalCancerSuspicionAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D10HIVneg ====================================================
 
@@ -881,15 +923,15 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegCervicalCancerSuspicionAttendedCompositionIndicator = Indicators.newCountIndicator("HIVnegCervicalCancerSuspicionAttendedCompositionIndicator",
                 HIVnegCervicalCancerSuspicionAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D10HIVneg", "Number of women HIV negative and for cervical cancer suspicion attended referral", new Mapped(
-                HIVnegCervicalCancerSuspicionAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D10HIVneg", "Number of women HIV negative and for cervical cancer suspicion attended referral", new Mapped(
+                HIVnegCervicalCancerSuspicionAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
         // ==================== D11 ====================================================
 
-        SqlCohortDefinition FurtherManagementReasonForReferralIn=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("suspectedCancerReasonForReferralIn",breastCancerScreeningForms,reasonsForReferralIn,furtherManagement);
-        SqlCohortDefinition FurtherManagementAsReasonReferred=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("suspectedCancerAsReasonReferred",screeningCervicalForms,reasonsForReferral,furtherManagement);
+        SqlCohortDefinition FurtherManagementReasonForReferralIn=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("FurtherManagementReasonForReferralIn",breastCancerScreeningForms,reasonsForReferralIn,furtherManagement);
+        SqlCohortDefinition FurtherManagementAsReasonReferred=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("FurtherManagementAsReasonReferred",screeningCervicalForms,reasonsForReferral,furtherManagement);
         SqlCohortDefinition screenedForBreastCancerWithAbnormalBreastFindings=Cohorts.getPatientsWithObservationInEncounterBetweenStartAndEndDate("screenedForBreastCancerWithAbnormalBreastFindings",breastCancerScreeningForms,breastExamination,ABNORMAL);
 
 
@@ -907,8 +949,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator breastReferredAndAttendedCompositionIndicator = Indicators.newCountIndicator("breastReferredAndAttendedCompositionIndicator",
                 breastReferredAndAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D11", "Number of women with abnormal breast findings referred who attended referral visit", new Mapped(
-                breastReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D11", "Number of women with abnormal breast findings referred who attended referral visit", new Mapped(
+                breastReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
                 // ==================== D11HIVpos ====================================================
 
@@ -928,8 +970,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposbreastReferredAndAttendedCompositionIndicator = Indicators.newCountIndicator("HIVposbreastReferredAndAttendedCompositionIndicator",
                 HIVposbreastReferredAndAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D11HIVpos", "Number of women HIV positive and with abnormal breast findings referred who attended referral visit", new Mapped(
-                HIVposbreastReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D11HIVpos", "Number of women HIV positive and with abnormal breast findings referred who attended referral visit", new Mapped(
+                HIVposbreastReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
                 // ==================== D11HIVneg ====================================================
 
@@ -950,8 +992,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegbreastReferredAndAttendedCompositionIndicator = Indicators.newCountIndicator("HIVnegbreastReferredAndAttendedCompositionIndicator",
                 HIVnegbreastReferredAndAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D11HIVneg", "Number of women HIV negative and with abnormal breast findings referred who attended referral visit", new Mapped(
-                HIVnegbreastReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D11HIVneg", "Number of women HIV negative and with abnormal breast findings referred who attended referral visit", new Mapped(
+                HIVnegbreastReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -973,8 +1015,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator LEEPReferredAndAttendedCompositionIndicator = Indicators.newCountIndicator("LEEPReferredAndAttendedCompositionIndicator",
                 LEEPReferredAndAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D12", "Number of women referred for LEEP &Colposcopy attended referral", new Mapped(
-                LEEPReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D12", "Number of women referred for LEEP &Colposcopy attended referral", new Mapped(
+                LEEPReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
                // ==================== D12HIVpos ====================================================
 
@@ -991,8 +1033,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposLEEPReferredAndAttendedCompositionIndicator = Indicators.newCountIndicator("HIVposLEEPReferredAndAttendedCompositionIndicator",
                 HIVposLEEPReferredAndAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D12HIVpos", "Number of women HIV positive and referred for LEEP &Colposcopy attended referral", new Mapped(
-                HIVposLEEPReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D12HIVpos", "Number of women HIV positive and referred for LEEP &Colposcopy attended referral", new Mapped(
+                HIVposLEEPReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
                // ==================== D12HIVneg ====================================================
 
@@ -1011,8 +1053,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegLEEPReferredAndAttendedCompositionIndicator = Indicators.newCountIndicator("HIVnegLEEPReferredAndAttendedCompositionIndicator",
                 HIVnegLEEPReferredAndAttendedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D12HIVneg", "Number of women HIV negative and referred for LEEP &Colposcopy attended referral", new Mapped(
-                HIVnegLEEPReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D12HIVneg", "Number of women HIV negative and referred for LEEP &Colposcopy attended referral", new Mapped(
+                HIVnegLEEPReferredAndAttendedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1036,8 +1078,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator BiopsyConfirmingCancerCompositionIndicator = Indicators.newCountIndicator("BiopsyConfirmingCancerCompositionIndicator",
                 BiopsyConfirmingCancerComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D13", "Number of breast biopsies confirming cancer", new Mapped(
-                BiopsyConfirmingCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D13", "Number of breast biopsies confirming cancer", new Mapped(
+                BiopsyConfirmingCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
          // ==================== D13HIVpos ====================================================
 
@@ -1055,8 +1097,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposBiopsyConfirmingCancerCompositionIndicator = Indicators.newCountIndicator("HIVposBiopsyConfirmingCancerCompositionIndicator",
                 HIVposBiopsyConfirmingCancerComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D13HIVpos", "Number of HIV positive and breast biopsies confirming cancer", new Mapped(
-                HIVposBiopsyConfirmingCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D13HIVpos", "Number of HIV positive and breast biopsies confirming cancer", new Mapped(
+                HIVposBiopsyConfirmingCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
          // ==================== D13HIVneg ====================================================
 
@@ -1074,8 +1116,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegBiopsyConfirmingCancerCompositionIndicator = Indicators.newCountIndicator("HIVnegBiopsyConfirmingCancerCompositionIndicator",
                 HIVnegBiopsyConfirmingCancerComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D13HIVneg", "Number of HIV negative and breast biopsies confirming cancer", new Mapped(
-                HIVnegBiopsyConfirmingCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D13HIVneg", "Number of HIV negative and breast biopsies confirming cancer", new Mapped(
+                HIVnegBiopsyConfirmingCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1098,8 +1140,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator femaleAbnomalBreastReferredCompositionIndicator = Indicators.newCountIndicator("femaleAbnomalBreastReferredCompositionIndicator",
                 femaleAbnomalBreastReferredComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D14", "Number of women with abnormal breast exams reffered", new Mapped(
-                femaleAbnomalBreastReferredCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D14", "Number of women with abnormal breast exams reffered", new Mapped(
+                femaleAbnomalBreastReferredCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D14HIVpos ====================================================
 
@@ -1119,8 +1161,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposfemaleAbnomalBreastReferredCompositionIndicator = Indicators.newCountIndicator("HIVposfemaleAbnomalBreastReferredCompositionIndicator",
                 HIVposfemaleAbnomalBreastReferredComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D14HIVpos", "Number of women HIV positive and with abnormal breast exams reffered", new Mapped(
-                HIVposfemaleAbnomalBreastReferredCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D14HIVpos", "Number of women HIV positive and with abnormal breast exams reffered", new Mapped(
+                HIVposfemaleAbnomalBreastReferredCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D14HIVneg ====================================================
 
@@ -1141,8 +1183,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegfemaleAbnomalBreastReferredCompositionIndicator = Indicators.newCountIndicator("HIVnegfemaleAbnomalBreastReferredCompositionIndicator",
                 HIVnegfemaleAbnomalBreastReferredComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D14HIVneg", "Number of women HIV negative and with abnormal breast exams reffered", new Mapped(
-                HIVnegfemaleAbnomalBreastReferredCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D14HIVneg", "Number of women HIV negative and with abnormal breast exams reffered", new Mapped(
+                HIVnegfemaleAbnomalBreastReferredCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1174,8 +1216,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator abnormalBreastGotdiagnosticUltrasoundCompositionIndicator = Indicators.newCountIndicator("abnormalBreastGotdiagnosticUltrasoundCompositionIndicator",
                 abnormalBreastGotdiagnosticUltrasoundComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D15", "Number of abnormal breast conditions recieved diagnostic ultrasound", new Mapped(
-                abnormalBreastGotdiagnosticUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D15", "Number of abnormal breast conditions recieved diagnostic ultrasound", new Mapped(
+                abnormalBreastGotdiagnosticUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
             // ==================== D15HIVpos ====================================================
 
@@ -1197,8 +1239,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposabnormalBreastGotdiagnosticUltrasoundCompositionIndicator = Indicators.newCountIndicator("HIVposabnormalBreastGotdiagnosticUltrasoundCompositionIndicator",
                 HIVposabnormalBreastGotdiagnosticUltrasoundComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D15HIVpos", "Number of HIV positive and abnormal breast conditions recieved diagnostic ultrasound", new Mapped(
-                HIVposabnormalBreastGotdiagnosticUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D15HIVpos", "Number of HIV positive and abnormal breast conditions recieved diagnostic ultrasound", new Mapped(
+                HIVposabnormalBreastGotdiagnosticUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
             // ==================== D15HIVneg ====================================================
 
@@ -1220,8 +1262,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegabnormalBreastGotdiagnosticUltrasoundCompositionIndicator = Indicators.newCountIndicator("HIVnegabnormalBreastGotdiagnosticUltrasoundCompositionIndicator",
                 HIVnegabnormalBreastGotdiagnosticUltrasoundComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D15HIVneg", "Number of HIV negative and abnormal breast conditions recieved diagnostic ultrasound", new Mapped(
-                HIVnegabnormalBreastGotdiagnosticUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D15HIVneg", "Number of HIV negative and abnormal breast conditions recieved diagnostic ultrasound", new Mapped(
+                HIVnegabnormalBreastGotdiagnosticUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1243,8 +1285,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator breastMassCompositionIndicator = Indicators.newCountIndicator("breastMassCompositionIndicator",
                 breastMassComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D16", "Number of abnormal breast indications for Ultrasound", new Mapped(
-                breastMassCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D16", "Number of abnormal breast indications for Ultrasound", new Mapped(
+                breastMassCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D16HIVpos ====================================================
 
@@ -1263,8 +1305,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposbreastMassCompositionIndicator = Indicators.newCountIndicator("HIVposbreastMassCompositionIndicator",
                 HIVposbreastMassComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D16HIVpos", "Number of HIV positive and abnormal breast indications for Ultrasound", new Mapped(
-                HIVposbreastMassCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D16HIVpos", "Number of HIV positive and abnormal breast indications for Ultrasound", new Mapped(
+                HIVposbreastMassCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D16HIVneg ====================================================
 
@@ -1284,8 +1326,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegHIVnegbreastMassCompositionIndicator = Indicators.newCountIndicator("HIVnegHIVnegbreastMassCompositionIndicator",
                 HIVnegHIVnegbreastMassComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D16HIVneg", "Number of HIV negative and abnormal breast indications for Ultrasound", new Mapped(
-                HIVnegHIVnegbreastMassCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D16HIVneg", "Number of HIV negative and abnormal breast indications for Ultrasound", new Mapped(
+                HIVnegHIVnegbreastMassCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1322,8 +1364,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator breastBiopsiesPerformedCompositionIndicator = Indicators.newCountIndicator("breastBiopsiesPerformedCompositionIndicator",
                 breastBiopsiesPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D17", "Number of breast biopsies performed", new Mapped(
-                breastBiopsiesPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D17", "Number of breast biopsies performed", new Mapped(
+                breastBiopsiesPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D17HIVpos ====================================================
 
@@ -1345,8 +1387,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposbreastBiopsiesPerformedCompositionIndicator = Indicators.newCountIndicator("HIVposbreastBiopsiesPerformedCompositionIndicator",
                 HIVposbreastBiopsiesPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D17HIVpos", "Number of HIV positive and breast biopsies performed", new Mapped(
-                HIVposbreastBiopsiesPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D17HIVpos", "Number of HIV positive and breast biopsies performed", new Mapped(
+                HIVposbreastBiopsiesPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D17HIVneg ====================================================
 
@@ -1369,8 +1411,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegbreastBiopsiesPerformedCompositionIndicator = Indicators.newCountIndicator("HIVnegbreastBiopsiesPerformedCompositionIndicator",
                 HIVnegbreastBiopsiesPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D17HIVneg", "Number of HIV negative and breast biopsies performed", new Mapped(
-                HIVnegbreastBiopsiesPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D17HIVneg", "Number of HIV negative and breast biopsies performed", new Mapped(
+                HIVnegbreastBiopsiesPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1382,73 +1424,73 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition suspectedBreastMalignancyUltrasoundomposition=new CompositionCohortDefinition();
-        suspectedBreastMalignancyUltrasoundomposition.setName("suspectedBreastMalignancyUltrasoundomposition");
-        suspectedBreastMalignancyUltrasoundomposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        suspectedBreastMalignancyUltrasoundomposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("1",new Mapped<CohortDefinition>(complexBreastMassUltrasoundResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("2",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithIntermediateSolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("3",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithHighSuspiciousForMalignancySolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("4",new Mapped<CohortDefinition>(abnormalPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("5",new Mapped<CohortDefinition>(abnormalNonPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("6",new Mapped<CohortDefinition>(numberOfPatientsWithBiradsFourorabove, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        suspectedBreastMalignancyUltrasoundomposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        suspectedBreastMalignancyUltrasoundomposition.setCompositionString("1 OR 2 OR 3 OR 4 OR 5 OR 6");
+        CompositionCohortDefinition suspectedBreastMalignancyUltrasoundComposition=new CompositionCohortDefinition();
+        suspectedBreastMalignancyUltrasoundComposition.setName("suspectedBreastMalignancyUltrasoundComposition");
+        suspectedBreastMalignancyUltrasoundComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        suspectedBreastMalignancyUltrasoundComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("1",new Mapped<CohortDefinition>(complexBreastMassUltrasoundResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("2",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithIntermediateSolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("3",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithHighSuspiciousForMalignancySolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("4",new Mapped<CohortDefinition>(abnormalPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("5",new Mapped<CohortDefinition>(abnormalNonPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("6",new Mapped<CohortDefinition>(numberOfPatientsWithBiradsFourorabove, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        suspectedBreastMalignancyUltrasoundComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        suspectedBreastMalignancyUltrasoundComposition.setCompositionString("1 OR 2 OR 3 OR 4 OR 5 OR 6");
 
-        CohortIndicator suspectedBreastMalignancyUltrasoundompositionIndicator = Indicators.newCountIndicator("suspectedBreastMalignancyUltrasoundompositionIndicator",
-                suspectedBreastMalignancyUltrasoundomposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator suspectedBreastMalignancyUltrasoundCompositionIndicator = Indicators.newCountIndicator("suspectedBreastMalignancyUltrasoundCompositionIndicator",
+                suspectedBreastMalignancyUltrasoundComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D18", "Number of suspected breast malignancy under Ultrasound", new Mapped(
-                suspectedBreastMalignancyUltrasoundompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D18", "Number of suspected breast malignancy under Ultrasound", new Mapped(
+                suspectedBreastMalignancyUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D18HIVpos ====================================================
 
 
 
-        CompositionCohortDefinition HIVpossuspectedBreastMalignancyUltrasoundomposition=new CompositionCohortDefinition();
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.setName("HIVpossuspectedBreastMalignancyUltrasoundomposition");
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("1",new Mapped<CohortDefinition>(complexBreastMassUltrasoundResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("2",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithIntermediateSolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("3",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithHighSuspiciousForMalignancySolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("4",new Mapped<CohortDefinition>(abnormalPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("5",new Mapped<CohortDefinition>(abnormalNonPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("6",new Mapped<CohortDefinition>(numberOfPatientsWithBiradsFourorabove, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.getSearches().put("7",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVpossuspectedBreastMalignancyUltrasoundomposition.setCompositionString("(1 OR 2 OR 3 OR 4 OR 5 OR 6) AND 7");
+        CompositionCohortDefinition HIVpossuspectedBreastMalignancyUltrasoundComposition=new CompositionCohortDefinition();
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.setName("HIVpossuspectedBreastMalignancyUltrasoundComposition");
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("1",new Mapped<CohortDefinition>(complexBreastMassUltrasoundResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("2",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithIntermediateSolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("3",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithHighSuspiciousForMalignancySolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("4",new Mapped<CohortDefinition>(abnormalPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("5",new Mapped<CohortDefinition>(abnormalNonPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("6",new Mapped<CohortDefinition>(numberOfPatientsWithBiradsFourorabove, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.getSearches().put("7",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVpossuspectedBreastMalignancyUltrasoundComposition.setCompositionString("(1 OR 2 OR 3 OR 4 OR 5 OR 6) AND 7");
 
-        CohortIndicator HIVpossuspectedBreastMalignancyUltrasoundompositionIndicator = Indicators.newCountIndicator("HIVpossuspectedBreastMalignancyUltrasoundompositionIndicator",
-                HIVpossuspectedBreastMalignancyUltrasoundomposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVpossuspectedBreastMalignancyUltrasoundCompositionIndicator = Indicators.newCountIndicator("HIVpossuspectedBreastMalignancyUltrasoundCompositionIndicator",
+                HIVpossuspectedBreastMalignancyUltrasoundComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D18HIVpos", "Number of HIV positive and suspected breast malignancy under Ultrasound", new Mapped(
-                HIVpossuspectedBreastMalignancyUltrasoundompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D18HIVpos", "Number of HIV positive and suspected breast malignancy under Ultrasound", new Mapped(
+                HIVpossuspectedBreastMalignancyUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D18HIVneg ====================================================
 
 
 
-        CompositionCohortDefinition HIVnegsuspectedBreastMalignancyUltrasoundomposition=new CompositionCohortDefinition();
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.setName("HIVnegsuspectedBreastMalignancyUltrasoundomposition");
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("1",new Mapped<CohortDefinition>(complexBreastMassUltrasoundResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("2",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithIntermediateSolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("3",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithHighSuspiciousForMalignancySolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("4",new Mapped<CohortDefinition>(abnormalPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("5",new Mapped<CohortDefinition>(abnormalNonPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("6",new Mapped<CohortDefinition>(numberOfPatientsWithBiradsFourorabove, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("7",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.getSearches().put("8",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegsuspectedBreastMalignancyUltrasoundomposition.setCompositionString("(1 OR 2 OR 3 OR 4 OR 5 OR 6) AND (7 OR 8)");
+        CompositionCohortDefinition HIVnegsuspectedBreastMalignancyUltrasoundComposition=new CompositionCohortDefinition();
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.setName("HIVnegsuspectedBreastMalignancyUltrasoundComposition");
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("1",new Mapped<CohortDefinition>(complexBreastMassUltrasoundResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("2",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithIntermediateSolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("3",new Mapped<CohortDefinition>(numberOfScreenedPeopleWithHighSuspiciousForMalignancySolidMass, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("4",new Mapped<CohortDefinition>(abnormalPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("5",new Mapped<CohortDefinition>(abnormalNonPalpableLymphNodeUltrasound, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("6",new Mapped<CohortDefinition>(numberOfPatientsWithBiradsFourorabove, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("7",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.getSearches().put("8",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegsuspectedBreastMalignancyUltrasoundComposition.setCompositionString("(1 OR 2 OR 3 OR 4 OR 5 OR 6) AND (7 OR 8)");
 
-        CohortIndicator HIVnegsuspectedBreastMalignancyUltrasoundompositionIndicator = Indicators.newCountIndicator("HIVnegsuspectedBreastMalignancyUltrasoundompositionIndicator",
-                HIVnegsuspectedBreastMalignancyUltrasoundomposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegsuspectedBreastMalignancyUltrasoundCompositionIndicator = Indicators.newCountIndicator("HIVnegsuspectedBreastMalignancyUltrasoundCompositionIndicator",
+                HIVnegsuspectedBreastMalignancyUltrasoundComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D18HIVneg", "Number of HIV negative and suspected breast malignancy under Ultrasound", new Mapped(
-                HIVnegsuspectedBreastMalignancyUltrasoundompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D18HIVneg", "Number of HIV negative and suspected breast malignancy under Ultrasound", new Mapped(
+                HIVnegsuspectedBreastMalignancyUltrasoundCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1477,8 +1519,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator femaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator = Indicators.newCountIndicator("femaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator",
                 femaleBiopsiesWithSuspectedCervicalCancerComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D19", "Number of women suspected with cervical cancer whose biopsy confirmed cervical cancer", new Mapped(
-                femaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D19", "Number of women suspected with cervical cancer whose biopsy confirmed cervical cancer", new Mapped(
+                femaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1501,8 +1543,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVposfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator = Indicators.newCountIndicator("HIVposfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator",
                 HIVposfemaleBiopsiesWithSuspectedCervicalCancerComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D19HIVpos", "Number of women HIV positive and suspected with cervical cancer whose biopsy confirmed cervical cancer", new Mapped(
-                HIVposfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D19HIVpos", "Number of women HIV positive and suspected with cervical cancer whose biopsy confirmed cervical cancer", new Mapped(
+                HIVposfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D19HIVneg ====================================================
 
@@ -1524,8 +1566,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator = Indicators.newCountIndicator("HIVnegfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator",
                 HIVnegfemaleBiopsiesWithSuspectedCervicalCancerComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D19HIVneg", "Number of women HIV negative and suspected with cervical cancer whose biopsy confirmed cervical cancer", new Mapped(
-                HIVnegfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D19HIVneg", "Number of women HIV negative and suspected with cervical cancer whose biopsy confirmed cervical cancer", new Mapped(
+                HIVnegfemaleBiopsiesWithSuspectedCervicalCancerCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D20 ====================================================
@@ -1534,7 +1576,7 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
         CompositionCohortDefinition testedViaTriagePositiveComposition=new CompositionCohortDefinition();
-        testedViaTriagePositiveComposition.setName("femaleBiopsiesWithSuspectedCervicalCancerComposition");
+        testedViaTriagePositiveComposition.setName("testedViaTriagePositiveComposition");
         testedViaTriagePositiveComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
         testedViaTriagePositiveComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
         testedViaTriagePositiveComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
@@ -1546,8 +1588,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaTriagePositiveCompositionIndicator = Indicators.newCountIndicator("testedViaTriagePositiveCompositionIndicator",
                 testedViaTriagePositiveComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D20", "Number of women tested VIA triage positive", new Mapped(
-                testedViaTriagePositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D20", "Number of women tested VIA triage positive", new Mapped(
+                testedViaTriagePositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
             // ==================== D20HIVpos ====================================================
 
@@ -1566,15 +1608,15 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaTriagePositiveCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriagePositiveCompositionIndicator",
                 HIVpostestedViaTriagePositiveComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D20HIVpos", "Number of women HIV positive and tested VIA triage positive", new Mapped(
-                HIVpostestedViaTriagePositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D20HIVpos", "Number of women HIV positive and tested VIA triage positive", new Mapped(
+                HIVpostestedViaTriagePositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
             // ==================== D20HIVneg ====================================================
 
 
 
         CompositionCohortDefinition HIVnegtestedViaTriagePositiveComposition=new CompositionCohortDefinition();
-        HIVnegtestedViaTriagePositiveComposition.setName("femaleBiopsiesWithSuspectedCervicalCancerComposition");
+        HIVnegtestedViaTriagePositiveComposition.setName("HIVnegtestedViaTriagePositiveComposition");
         HIVnegtestedViaTriagePositiveComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
         HIVnegtestedViaTriagePositiveComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
         HIVnegtestedViaTriagePositiveComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
@@ -1587,8 +1629,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaTriagePositiveCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriagePositiveCompositionIndicator",
                 HIVnegtestedViaTriagePositiveComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D20HIVneg", "Number of women HIV negative and tested VIA triage positive", new Mapped(
-                HIVnegtestedViaTriagePositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D20HIVneg", "Number of women HIV negative and tested VIA triage positive", new Mapped(
+                HIVnegtestedViaTriagePositiveCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1609,8 +1651,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaTriageCompositionIndicator = Indicators.newCountIndicator("testedViaTriageCompositionIndicator",
                 testedViaTriageComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D21", "Number of HPV-positive women who received VIA triage", new Mapped(
-                testedViaTriageCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D21", "Number of HPV-positive women who received VIA triage", new Mapped(
+                testedViaTriageCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D21HIVpos ====================================================
 
@@ -1627,8 +1669,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaTriageCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageCompositionIndicator",
                 HIVpostestedViaTriageComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D21HIVpos", "Number of HIV positive and HPV-positive women who received VIA triage", new Mapped(
-                HIVpostestedViaTriageCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D21HIVpos", "Number of HIV positive and HPV-positive women who received VIA triage", new Mapped(
+                HIVpostestedViaTriageCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D21HIVneg ====================================================
 
@@ -1646,8 +1688,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaTriageCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageCompositionIndicator",
                 HIVnegtestedViaTriageComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D21HIVneg", "Number of HIV negative and HPV-positive women who received VIA triage", new Mapped(
-                HIVnegtestedViaTriageCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D21HIVneg", "Number of HIV negative and HPV-positive women who received VIA triage", new Mapped(
+                HIVnegtestedViaTriageCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1672,8 +1714,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaTriageTreatedWithThermoablationCompositionIndicator = Indicators.newCountIndicator("testedViaTriageTreatedWithThermoablationCompositionIndicator",
                 testedViaTriageTreatedWithThermoablationComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D22", "Number of HPV+ & VIA Triage+ women treated with thermoablation", new Mapped(
-                testedViaTriageTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D22", "Number of HPV+ & VIA Triage+ women treated with thermoablation", new Mapped(
+                testedViaTriageTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D22HIVpos ====================================================
 
@@ -1693,8 +1735,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaTriageTreatedWithThermoablationCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageTreatedWithThermoablationCompositionIndicator",
                 HIVpostestedViaTriageTreatedWithThermoablationComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D22HIVpos", "Number of HIV positive and HPV+ & VIA Triage+ women treated with thermoablation", new Mapped(
-                HIVpostestedViaTriageTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D22HIVpos", "Number of HIV positive and HPV+ & VIA Triage+ women treated with thermoablation", new Mapped(
+                HIVpostestedViaTriageTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D22HIVneg ====================================================
 
@@ -1714,8 +1756,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaTriageTreatedWithThermoablationCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageTreatedWithThermoablationCompositionIndicator",
                 HIVnegtestedViaTriageTreatedWithThermoablationComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D22HIVneg", "Number of HIV negative and HPV+ & VIA Triage+ women treated with thermoablation", new Mapped(
-                HIVnegtestedViaTriageTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D22HIVneg", "Number of HIV negative and HPV+ & VIA Triage+ women treated with thermoablation", new Mapped(
+                HIVnegtestedViaTriageTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1724,65 +1766,65 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition testedViaTriageThermalAblationAsResutsComposition=new CompositionCohortDefinition();
-        testedViaTriageThermalAblationAsResutsComposition.setName("testedViaTriageThermalAblationAsResutsComposition");
-        testedViaTriageThermalAblationAsResutsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        testedViaTriageThermalAblationAsResutsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        testedViaTriageThermalAblationAsResutsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageThermalAblationAsResutsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIAAndEligibleForThermalAblationResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageThermalAblationAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        testedViaTriageThermalAblationAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        testedViaTriageThermalAblationAsResutsComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        testedViaTriageThermalAblationAsResutsComposition.setCompositionString("1 and 2 and 3");
+        CompositionCohortDefinition testedViaTriageThermalAblationAsResultsComposition=new CompositionCohortDefinition();
+        testedViaTriageThermalAblationAsResultsComposition.setName("testedViaTriageThermalAblationAsResultsComposition");
+        testedViaTriageThermalAblationAsResultsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        testedViaTriageThermalAblationAsResultsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        testedViaTriageThermalAblationAsResultsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageThermalAblationAsResultsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIAAndEligibleForThermalAblationResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageThermalAblationAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        testedViaTriageThermalAblationAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        testedViaTriageThermalAblationAsResultsComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        testedViaTriageThermalAblationAsResultsComposition.setCompositionString("1 and 2 and 3");
 
-        CohortIndicator testedViaTriageThermalAblationAsResutsCompositionIndicator = Indicators.newCountIndicator("testedViaTriageThermalAblationAsResutsCompositionIndicator",
-                testedViaTriageThermalAblationAsResutsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator testedViaTriageThermalAblationAsResultsCompositionIndicator = Indicators.newCountIndicator("testedViaTriageThermalAblationAsResultsCompositionIndicator",
+                testedViaTriageThermalAblationAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D23", "Number of HPV+ & VIA Triage+ women eligible for Thermal ablation", new Mapped(
-                testedViaTriageThermalAblationAsResutsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D23", "Number of HPV+ & VIA Triage+ women eligible for Thermal ablation", new Mapped(
+                testedViaTriageThermalAblationAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D23HIVpos ====================================================
 
 
 
-        CompositionCohortDefinition HIVpostestedViaTriageThermalAblationAsResutsComposition=new CompositionCohortDefinition();
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.setName("HIVpostestedViaTriageThermalAblationAsResutsComposition");
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIAAndEligibleForThermalAblationResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        HIVpostestedViaTriageThermalAblationAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVpostestedViaTriageThermalAblationAsResutsComposition.setCompositionString("1 and 2 and 3 and 4");
+        CompositionCohortDefinition HIVpostestedViaTriageThermalAblationAsResultsComposition=new CompositionCohortDefinition();
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.setName("HIVpostestedViaTriageThermalAblationAsResultsComposition");
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIAAndEligibleForThermalAblationResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        HIVpostestedViaTriageThermalAblationAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVpostestedViaTriageThermalAblationAsResultsComposition.setCompositionString("1 and 2 and 3 and 4");
 
-        CohortIndicator HIVpostestedViaTriageThermalAblationAsResutsCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageThermalAblationAsResutsCompositionIndicator",
-                HIVpostestedViaTriageThermalAblationAsResutsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVpostestedViaTriageThermalAblationAsResultsCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageThermalAblationAsResultsCompositionIndicator",
+                HIVpostestedViaTriageThermalAblationAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D23HIVpos", "Number of HIV positive and HPV+ & VIA Triage+ women eligible for Thermal ablation", new Mapped(
-                HIVpostestedViaTriageThermalAblationAsResutsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D23HIVpos", "Number of HIV positive and HPV+ & VIA Triage+ women eligible for Thermal ablation", new Mapped(
+                HIVpostestedViaTriageThermalAblationAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D23HIVneg ====================================================
 
 
 
-        CompositionCohortDefinition HIVnegtestedViaTriageThermalAblationAsResutsComposition=new CompositionCohortDefinition();
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.setName("testedViaTriageThermalAblationAsResutsComposition");
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIAAndEligibleForThermalAblationResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        HIVnegtestedViaTriageThermalAblationAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegtestedViaTriageThermalAblationAsResutsComposition.setCompositionString("1 and 2 and 3 and (4 or 5)");
+        CompositionCohortDefinition HIVnegtestedViaTriageThermalAblationAsResultsComposition=new CompositionCohortDefinition();
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.setName("testedViaTriageThermalAblationAsResultsComposition");
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIAAndEligibleForThermalAblationResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        HIVnegtestedViaTriageThermalAblationAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegtestedViaTriageThermalAblationAsResultsComposition.setCompositionString("1 and 2 and 3 and (4 or 5)");
 
-        CohortIndicator HIVnegtestedViaTriageThermalAblationAsResutsCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageThermalAblationAsResutsCompositionIndicator",
-                HIVnegtestedViaTriageThermalAblationAsResutsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegtestedViaTriageThermalAblationAsResultsCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageThermalAblationAsResultsCompositionIndicator",
+                HIVnegtestedViaTriageThermalAblationAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D23HIVneg", "Number of HIV negative and HPV+ & VIA Triage+ women eligible for Thermal ablation", new Mapped(
-                HIVnegtestedViaTriageThermalAblationAsResutsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D23HIVneg", "Number of HIV negative and HPV+ & VIA Triage+ women eligible for Thermal ablation", new Mapped(
+                HIVnegtestedViaTriageThermalAblationAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1790,65 +1832,65 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition=new CompositionCohortDefinition();
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.setName("testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition");
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("3",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.setCompositionString("1 and 2 and 3 and 4");
+        CompositionCohortDefinition testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition=new CompositionCohortDefinition();
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.setName("testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition");
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("3",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.setCompositionString("1 and 2 and 3 and 4");
 
-        CohortIndicator testedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("testedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator",
-                testedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator testedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("testedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator",
+                testedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D24", "Number of HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
-                testedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D24", "Number of HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
+                testedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D24HIVpos ====================================================
 
 
 
-        CompositionCohortDefinition HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition=new CompositionCohortDefinition();
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.setName("HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition");
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("3",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.setCompositionString("1 and 2 and 3 and 4 and 5");
+        CompositionCohortDefinition HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition=new CompositionCohortDefinition();
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.setName("HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition");
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("3",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.setCompositionString("1 and 2 and 3 and 4 and 5");
 
-        CohortIndicator HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator",
-                HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator",
+                HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D24HIVpos", "Number of HIV positive and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
-                HIVpostestedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D24HIVpos", "Number of HIV positive and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
+                HIVpostestedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D24HIVneg ====================================================
 
 
 
-        CompositionCohortDefinition HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition=new CompositionCohortDefinition();
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.setName("HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition");
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("3",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.getSearches().put("6",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition.setCompositionString("1 and 2 and 3 and 4 and (5 or 6)");
+        CompositionCohortDefinition HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition=new CompositionCohortDefinition();
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.setName("HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition");
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("3",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("4",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.getSearches().put("6",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition.setCompositionString("1 and 2 and 3 and 4 and (5 or 6)");
 
-        CohortIndicator HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator",
-                HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator",
+                HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D24HIVneg", "Number of HIV negative and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
-                HIVnegtestedViaTriageNegativeAsResutsAndThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D24HIVneg", "Number of HIV negative and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
+                HIVnegtestedViaTriageNegativeAsResultsAndThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1856,67 +1898,67 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition testedViaTriageNegativeAsResutsComposition=new CompositionCohortDefinition();
-        testedViaTriageNegativeAsResutsComposition.setName("testedViaTriageNegativeAsResutsComposition");
-        testedViaTriageNegativeAsResutsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        testedViaTriageNegativeAsResutsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        testedViaTriageNegativeAsResutsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageNegativeAsResutsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        testedViaTriageNegativeAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        testedViaTriageNegativeAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        testedViaTriageNegativeAsResutsComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        testedViaTriageNegativeAsResutsComposition.setCompositionString("1 and 2 and 3");
+        CompositionCohortDefinition testedViaTriageNegativeAsResultsComposition=new CompositionCohortDefinition();
+        testedViaTriageNegativeAsResultsComposition.setName("testedViaTriageNegativeAsResultsComposition");
+        testedViaTriageNegativeAsResultsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        testedViaTriageNegativeAsResultsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        testedViaTriageNegativeAsResultsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageNegativeAsResultsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        testedViaTriageNegativeAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        testedViaTriageNegativeAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        testedViaTriageNegativeAsResultsComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        testedViaTriageNegativeAsResultsComposition.setCompositionString("1 and 2 and 3");
 
-        CohortIndicator testedViaTriageNegativeAsResutsCompositionCompositionIndicator = Indicators.newCountIndicator("testedViaTriageNegativeAsResutsCompositionCompositionIndicator",
-                testedViaTriageNegativeAsResutsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator testedViaTriageNegativeAsResultsCompositionCompositionIndicator = Indicators.newCountIndicator("testedViaTriageNegativeAsResultsCompositionCompositionIndicator",
+                testedViaTriageNegativeAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D25", "Number of HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
-                testedViaTriageNegativeAsResutsCompositionCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D25", "Number of HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
+                testedViaTriageNegativeAsResultsCompositionCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D25HIVpos ====================================================
 
 
 
-        CompositionCohortDefinition HIVpostestedViaTriageNegativeAsResutsComposition=new CompositionCohortDefinition();
-        HIVpostestedViaTriageNegativeAsResutsComposition.setName("HIVpostestedViaTriageNegativeAsResutsComposition");
-        HIVpostestedViaTriageNegativeAsResutsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVpostestedViaTriageNegativeAsResutsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVpostestedViaTriageNegativeAsResutsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        HIVpostestedViaTriageNegativeAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVpostestedViaTriageNegativeAsResutsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVpostestedViaTriageNegativeAsResutsComposition.setCompositionString("1 and 2 and 3 and 4");
+        CompositionCohortDefinition HIVpostestedViaTriageNegativeAsResultsComposition=new CompositionCohortDefinition();
+        HIVpostestedViaTriageNegativeAsResultsComposition.setName("HIVpostestedViaTriageNegativeAsResultsComposition");
+        HIVpostestedViaTriageNegativeAsResultsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVpostestedViaTriageNegativeAsResultsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVpostestedViaTriageNegativeAsResultsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        HIVpostestedViaTriageNegativeAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVpostestedViaTriageNegativeAsResultsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVpostestedViaTriageNegativeAsResultsComposition.setCompositionString("1 and 2 and 3 and 4");
 
-        CohortIndicator HIVpostestedViaTriageNegativeAsResutsCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageNegativeAsResutsCompositionIndicator",
-                HIVpostestedViaTriageNegativeAsResutsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVpostestedViaTriageNegativeAsResultsCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageNegativeAsResultsCompositionIndicator",
+                HIVpostestedViaTriageNegativeAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D25HIVpos", "Number of HIV positive and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
-                HIVpostestedViaTriageNegativeAsResutsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D25HIVpos", "Number of HIV positive and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
+                HIVpostestedViaTriageNegativeAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D25HIVneg ====================================================
 
 
 
-        CompositionCohortDefinition HIVnegtestedViaTriageNegativeAsResutsComposition=new CompositionCohortDefinition();
-        HIVnegtestedViaTriageNegativeAsResutsComposition.setName("HIVnegtestedViaTriageNegativeAsResutsComposition");
-        HIVnegtestedViaTriageNegativeAsResutsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        HIVnegtestedViaTriageNegativeAsResutsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegtestedViaTriageNegativeAsResutsComposition.setCompositionString("1 and 2 and 3 and (4 OR 5)");
+        CompositionCohortDefinition HIVnegtestedViaTriageNegativeAsResultsComposition=new CompositionCohortDefinition();
+        HIVnegtestedViaTriageNegativeAsResultsComposition.setName("HIVnegtestedViaTriageNegativeAsResultsComposition");
+        HIVnegtestedViaTriageNegativeAsResultsComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.getSearches().put("1",new Mapped<CohortDefinition>(VIATriagePerformed, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.getSearches().put("2",new Mapped<CohortDefinition>(VIANegativeResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(HPVPositiveResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        HIVnegtestedViaTriageNegativeAsResultsComposition.getSearches().put("3",new Mapped<CohortDefinition>(VIAPositiveLEEPResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.getSearches().put("5",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegtestedViaTriageNegativeAsResultsComposition.setCompositionString("1 and 2 and 3 and (4 OR 5)");
 
-        CohortIndicator HIVnegtestedViaTriageNegativeAsResutsCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageNegativeAsResutsCompositionIndicator",
-                HIVnegtestedViaTriageNegativeAsResutsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegtestedViaTriageNegativeAsResultsCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageNegativeAsResultsCompositionIndicator",
+                HIVnegtestedViaTriageNegativeAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D25HIVneg", "Number of HIV negative and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
-                HIVnegtestedViaTriageNegativeAsResutsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D25HIVneg", "Number of HIV negative and HPV+ & VIA Triage- women treated with thermoablation", new Mapped(
+                HIVnegtestedViaTriageNegativeAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -1938,8 +1980,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaScreenTreatedWithThermoablationCompositionIndicator = Indicators.newCountIndicator("testedViaScreenTreatedWithThermoablationCompositionIndicator",
                 testedViaScreenTreatedWithThermoablationComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D26", "Number of VIA screen positive women treated with thermoablation", new Mapped(
-                testedViaScreenTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D26", "Number of VIA screen positive women treated with thermoablation", new Mapped(
+                testedViaScreenTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D26HIVpos ====================================================
 
@@ -1959,8 +2001,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaScreenTreatedWithThermoablationCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaScreenTreatedWithThermoablationCompositionIndicator",
                 HIVpostestedViaScreenTreatedWithThermoablationComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D26HIVpos", "Number of HIV positive and VIA screen positive women treated with thermoablation", new Mapped(
-                HIVpostestedViaScreenTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D26HIVpos", "Number of HIV positive and VIA screen positive women treated with thermoablation", new Mapped(
+                HIVpostestedViaScreenTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D26HIVneg ====================================================
 
@@ -1981,8 +2023,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaScreenTreatedWithThermoablationCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaScreenTreatedWithThermoablationCompositionIndicator",
                 HIVnegtestedViaScreenTreatedWithThermoablationComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D26HIVneg", "Number of HIV negative and VIA screen positive women treated with thermoablation", new Mapped(
-                HIVnegtestedViaScreenTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D26HIVneg", "Number of HIV negative and VIA screen positive women treated with thermoablation", new Mapped(
+                HIVnegtestedViaScreenTreatedWithThermoablationCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2005,8 +2047,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaScreenWithThermoablationResultsCompositionIndicator = Indicators.newCountIndicator("testedViaScreenWithThermoablationResultsCompositionIndicator",
                 testedViaScreenWithThermoablationResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D27", "Number of VIA Screen positive eligible for Thermal abalation", new Mapped(
-                testedViaScreenWithThermoablationResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D27", "Number of VIA Screen positive eligible for Thermal ablation", new Mapped(
+                testedViaScreenWithThermoablationResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D27HIVpos ====================================================
 
@@ -2026,8 +2068,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaScreenWithThermoablationResultsCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaScreenWithThermoablationResultsCompositionIndicator",
                 HIVpostestedViaScreenWithThermoablationResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D27HIVpos", "Number of HIV positive and VIA Screen positive eligible for Thermal abalation", new Mapped(
-                HIVpostestedViaScreenWithThermoablationResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D27HIVpos", "Number of HIV positive and VIA Screen positive eligible for Thermal ablation", new Mapped(
+                HIVpostestedViaScreenWithThermoablationResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D27HIVneg ====================================================
 
@@ -2048,8 +2090,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaScreenWithThermoablationResultsCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaScreenWithThermoablationResultsCompositionIndicator",
                 HIVnegtestedViaScreenWithThermoablationResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D27HIVneg", "Number of HIV negative and VIA Screen positive eligible for Thermal abalation", new Mapped(
-                HIVnegtestedViaScreenWithThermoablationResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D27HIVneg", "Number of HIV negative and VIA Screen positive eligible for Thermal ablation", new Mapped(
+                HIVnegtestedViaScreenWithThermoablationResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2073,8 +2115,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaTriageTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("testedViaTriageTreatedWithLEEPCompositionIndicator",
                 testedViaTriageTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D28", "Number of HPV+ & VIA Triage+ women treated with LEEP", new Mapped(
-                testedViaTriageTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D28", "Number of HPV+ & VIA Triage+ women treated with LEEP", new Mapped(
+                testedViaTriageTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D28HIVpos ====================================================
 
@@ -2094,8 +2136,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaTriageTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageTreatedWithLEEPCompositionIndicator",
                 HIVpostestedViaTriageTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D28HIVpos", "Number of HIV positive and HPV+ & VIA Triage+ women treated with LEEP", new Mapped(
-                HIVpostestedViaTriageTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D28HIVpos", "Number of HIV positive and HPV+ & VIA Triage+ women treated with LEEP", new Mapped(
+                HIVpostestedViaTriageTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D28HIVneg ====================================================
 
@@ -2116,8 +2158,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaTriageTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageTreatedWithLEEPCompositionIndicator",
                 HIVnegtestedViaTriageTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D28HIVneg", "Number of HIV negative and HPV+ & VIA Triage+ women treated with LEEP", new Mapped(
-                HIVnegtestedViaTriageTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D28HIVneg", "Number of HIV negative and HPV+ & VIA Triage+ women treated with LEEP", new Mapped(
+                HIVnegtestedViaTriageTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2140,8 +2182,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaTriageLEEPAsResultsCompositionIndicator = Indicators.newCountIndicator("testedViaTriageLEEPAsResultsCompositionIndicator",
                 testedViaTriageLEEPAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D29", "Number of HPV+ & VIA triage + women eligible for LEEP", new Mapped(
-                testedViaTriageLEEPAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D29", "Number of HPV+ & VIA triage + women eligible for LEEP", new Mapped(
+                testedViaTriageLEEPAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D29HIVpos ====================================================
 
@@ -2161,8 +2203,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaTriageLEEPAsResultsCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageLEEPAsResultsCompositionIndicator",
                 HIVpostestedViaTriageLEEPAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D29HIVpos", "Number of HIV positive and HPV+ & VIA triage + women eligible for LEEP", new Mapped(
-                HIVpostestedViaTriageLEEPAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D29HIVpos", "Number of HIV positive and HPV+ & VIA triage + women eligible for LEEP", new Mapped(
+                HIVpostestedViaTriageLEEPAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D29HIVneg ====================================================
 
@@ -2183,8 +2225,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaTriageLEEPAsResultsCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageLEEPAsResultsCompositionIndicator",
                 HIVnegtestedViaTriageLEEPAsResultsComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D29HIVneg", "Number of HIV negative and HPV+ & VIA triage + women eligible for LEEP", new Mapped(
-                HIVnegtestedViaTriageLEEPAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D29HIVneg", "Number of HIV negative and HPV+ & VIA triage + women eligible for LEEP", new Mapped(
+                HIVnegtestedViaTriageLEEPAsResultsCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2207,8 +2249,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaScreenTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("testedViaScreenTreatedWithLEEPCompositionIndicator",
                 testedViaScreenTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D30", "Number of VIA sceen positive women treated with LEEP", new Mapped(
-                testedViaScreenTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D30", "Number of VIA screen positive women treated with LEEP", new Mapped(
+                testedViaScreenTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D30HIVpos ====================================================
 
@@ -2228,8 +2270,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaScreenTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaScreenTreatedWithLEEPCompositionIndicator",
                 HIVpostestedViaScreenTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D30HIVpos", "Number of HIV positive and VIA sceen positive women treated with LEEP", new Mapped(
-                HIVpostestedViaScreenTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D30HIVpos", "Number of HIV positive and VIA screen positive women treated with LEEP", new Mapped(
+                HIVpostestedViaScreenTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
     // ==================== D30HIVneg ====================================================
 
@@ -2250,8 +2292,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaScreenTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaScreenTreatedWithLEEPCompositionIndicator",
                 HIVnegtestedViaScreenTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D30HIVneg", "Number of HIV negative and VIA sceen positive women treated with LEEP", new Mapped(
-                HIVnegtestedViaScreenTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D30HIVneg", "Number of HIV negative and VIA screen positive women treated with LEEP", new Mapped(
+                HIVnegtestedViaScreenTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2273,8 +2315,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaScreenLEEPEligibleCompositionIndicator = Indicators.newCountIndicator("testedViaScreenLEEPEligibleCompositionIndicator",
                 testedViaScreenLEEPEligibleComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D31", "Number of VIA Screen positive eligible for LEEP", new Mapped(
-                testedViaScreenLEEPEligibleCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D31", "Number of VIA Screen positive eligible for LEEP", new Mapped(
+                testedViaScreenLEEPEligibleCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D31HIVpos ====================================================
 
@@ -2294,8 +2336,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaScreenLEEPEligibleCompositionIndicator = Indicators.newCountIndicator("HIVpostestedViaScreenLEEPEligibleCompositionIndicator",
                 HIVpostestedViaScreenLEEPEligibleComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D31HIVpos", "Number of HIV positive and VIA Screen positive eligible for LEEP", new Mapped(
-                HIVpostestedViaScreenLEEPEligibleCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D31HIVpos", "Number of HIV positive and VIA Screen positive eligible for LEEP", new Mapped(
+                HIVpostestedViaScreenLEEPEligibleCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D31HIVneg ====================================================
 
@@ -2316,8 +2358,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaScreenLEEPEligibleCompositionIndicator = Indicators.newCountIndicator("HIVnegtestedViaScreenLEEPEligibleCompositionIndicator",
                 HIVnegtestedViaScreenLEEPEligibleComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D31HIVneg", "Number of HIV negative and VIA Screen positive eligible for LEEP", new Mapped(
-                HIVnegtestedViaScreenLEEPEligibleCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D31HIVneg", "Number of HIV negative and VIA Screen positive eligible for LEEP", new Mapped(
+                HIVnegtestedViaScreenLEEPEligibleCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2325,57 +2367,57 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition ComfirmedCervicalCancerByBiopsyComposition=new CompositionCohortDefinition();
-        ComfirmedCervicalCancerByBiopsyComposition.setName("ComfirmedCervicalCancerByBiopsyComposition");
-        ComfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        ComfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        ComfirmedCervicalCancerByBiopsyComposition.getSearches().put("1",new Mapped<CohortDefinition>(confirmedCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        ComfirmedCervicalCancerByBiopsyComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        ComfirmedCervicalCancerByBiopsyComposition.setCompositionString("1");
+        CompositionCohortDefinition ConfirmedCervicalCancerByBiopsyComposition=new CompositionCohortDefinition();
+        ConfirmedCervicalCancerByBiopsyComposition.setName("ConfirmedCervicalCancerByBiopsyComposition");
+        ConfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        ConfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        ConfirmedCervicalCancerByBiopsyComposition.getSearches().put("1",new Mapped<CohortDefinition>(confirmedCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        ConfirmedCervicalCancerByBiopsyComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        ConfirmedCervicalCancerByBiopsyComposition.setCompositionString("1");
 
-        CohortIndicator ComfirmedCervicalCancerByBiopsyCompositionIndicator = Indicators.newCountIndicator("ComfirmedCervicalCancerByBiopsyCompositionIndicator",
-                ComfirmedCervicalCancerByBiopsyComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator ConfirmedCervicalCancerByBiopsyCompositionIndicator = Indicators.newCountIndicator("ConfirmedCervicalCancerByBiopsyCompositionIndicator",
+                ConfirmedCervicalCancerByBiopsyComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D32", "Number of all cervical biopsies(LEEP/Suspected cancer) confirming cancer", new Mapped(
-                ComfirmedCervicalCancerByBiopsyCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D32", "Number of all cervical biopsies(LEEP/Suspected cancer) confirming cancer", new Mapped(
+                ConfirmedCervicalCancerByBiopsyCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D32HIVpos ====================================================
 
 
 
-        CompositionCohortDefinition HIVposComfirmedCervicalCancerByBiopsyComposition=new CompositionCohortDefinition();
-        HIVposComfirmedCervicalCancerByBiopsyComposition.setName("HIVposComfirmedCervicalCancerByBiopsyComposition");
-        HIVposComfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVposComfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVposComfirmedCervicalCancerByBiopsyComposition.getSearches().put("1",new Mapped<CohortDefinition>(confirmedCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVposComfirmedCervicalCancerByBiopsyComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVposComfirmedCervicalCancerByBiopsyComposition.setCompositionString("1 and 2");
+        CompositionCohortDefinition HIVposConfirmedCervicalCancerByBiopsyComposition=new CompositionCohortDefinition();
+        HIVposConfirmedCervicalCancerByBiopsyComposition.setName("HIVposConfirmedCervicalCancerByBiopsyComposition");
+        HIVposConfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVposConfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVposConfirmedCervicalCancerByBiopsyComposition.getSearches().put("1",new Mapped<CohortDefinition>(confirmedCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVposConfirmedCervicalCancerByBiopsyComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVposConfirmedCervicalCancerByBiopsyComposition.setCompositionString("1 and 2");
 
-        CohortIndicator HIVposComfirmedCervicalCancerByBiopsyCompositionIndicator = Indicators.newCountIndicator("HIVposComfirmedCervicalCancerByBiopsyCompositionIndicator",
-                HIVposComfirmedCervicalCancerByBiopsyComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVposConfirmedCervicalCancerByBiopsyCompositionIndicator = Indicators.newCountIndicator("HIVposConfirmedCervicalCancerByBiopsyCompositionIndicator",
+                HIVposConfirmedCervicalCancerByBiopsyComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D32HIVpos", "Number of HIV positive and all cervical biopsies(LEEP/Suspected cancer) confirming cancer", new Mapped(
-                HIVposComfirmedCervicalCancerByBiopsyCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D32HIVpos", "Number of HIV positive and all cervical biopsies(LEEP/Suspected cancer) confirming cancer", new Mapped(
+                HIVposConfirmedCervicalCancerByBiopsyCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D32HIVneg ====================================================
 
 
 
-        CompositionCohortDefinition HIVnegComfirmedCervicalCancerByBiopsyComposition=new CompositionCohortDefinition();
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.setName("ComfirmedCervicalCancerByBiopsyComposition");
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.getSearches().put("1",new Mapped<CohortDefinition>(confirmedCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegComfirmedCervicalCancerByBiopsyComposition.setCompositionString("1 and (2 or 3)");
+        CompositionCohortDefinition HIVnegConfirmedCervicalCancerByBiopsyComposition=new CompositionCohortDefinition();
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.setName("ConfirmedCervicalCancerByBiopsyComposition");
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.getSearches().put("1",new Mapped<CohortDefinition>(confirmedCervicalCancer, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegConfirmedCervicalCancerByBiopsyComposition.setCompositionString("1 and (2 or 3)");
 
-        CohortIndicator HIVnegComfirmedCervicalCancerByBiopsyCompositionIndicator = Indicators.newCountIndicator("HIVnegComfirmedCervicalCancerByBiopsyCompositionIndicator",
-                HIVnegComfirmedCervicalCancerByBiopsyComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegConfirmedCervicalCancerByBiopsyCompositionIndicator = Indicators.newCountIndicator("HIVnegConfirmedCervicalCancerByBiopsyCompositionIndicator",
+                HIVnegConfirmedCervicalCancerByBiopsyComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D32HIVneg", "Number of HIV negative and all cervical biopsies(LEEP/Suspected cancer) confirming cancer", new Mapped(
-                HIVnegComfirmedCervicalCancerByBiopsyCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D32HIVneg", "Number of HIV negative and all cervical biopsies(LEEP/Suspected cancer) confirming cancer", new Mapped(
+                HIVnegConfirmedCervicalCancerByBiopsyCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2384,58 +2426,58 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition BiospyPerformedComposition=new CompositionCohortDefinition();
-        BiospyPerformedComposition.setName("BiospyPerformedComposition");
-        BiospyPerformedComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        BiospyPerformedComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        BiospyPerformedComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        BiospyPerformedComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        BiospyPerformedComposition.setCompositionString("1");
+        CompositionCohortDefinition BiopsyPerformedComposition=new CompositionCohortDefinition();
+        BiopsyPerformedComposition.setName("BiopsyPerformedComposition");
+        BiopsyPerformedComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        BiopsyPerformedComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        BiopsyPerformedComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        BiopsyPerformedComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        BiopsyPerformedComposition.setCompositionString("1");
 
-        CohortIndicator BiospyPerformedCompositionIndicator = Indicators.newCountIndicator("BiospyPerformedCompositionIndicator",
-                BiospyPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator BiopsyPerformedCompositionIndicator = Indicators.newCountIndicator("BiopsyPerformedCompositionIndicator",
+                BiopsyPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D33", "Number of all cervical biopsies(LEEP/Suspected cancer) performed", new Mapped(
-                BiospyPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D33", "Number of all cervical biopsies(LEEP/Suspected cancer) performed", new Mapped(
+                BiopsyPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D33HIVpos ====================================================
 
 
 
-        CompositionCohortDefinition HIVposBiospyPerformedComposition=new CompositionCohortDefinition();
-        HIVposBiospyPerformedComposition.setName("HIVposBiospyPerformedComposition");
-        HIVposBiospyPerformedComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVposBiospyPerformedComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVposBiospyPerformedComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVposBiospyPerformedComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVposBiospyPerformedComposition.setCompositionString("1 and 2");
+        CompositionCohortDefinition HIVposBiopsyPerformedComposition=new CompositionCohortDefinition();
+        HIVposBiopsyPerformedComposition.setName("HIVposBiopsyPerformedComposition");
+        HIVposBiopsyPerformedComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVposBiopsyPerformedComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVposBiopsyPerformedComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVposBiopsyPerformedComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVposBiopsyPerformedComposition.setCompositionString("1 and 2");
 
-        CohortIndicator HIVposBiospyPerformedCompositionIndicator = Indicators.newCountIndicator("HIVposBiospyPerformedCompositionIndicator",
-                HIVposBiospyPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVposBiopsyPerformedCompositionIndicator = Indicators.newCountIndicator("HIVposBiopsyPerformedCompositionIndicator",
+                HIVposBiopsyPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D33HIVpos", "Number of HIV positive and all cervical biopsies(LEEP/Suspected cancer) performed", new Mapped(
-                HIVposBiospyPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D33HIVpos", "Number of HIV positive and all cervical biopsies(LEEP/Suspected cancer) performed", new Mapped(
+                HIVposBiopsyPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D33HIVneg ====================================================
 
 
 
-        CompositionCohortDefinition HIVnegBiospyPerformedComposition=new CompositionCohortDefinition();
-        HIVnegBiospyPerformedComposition.setName("HIVnegBiospyPerformedComposition");
-        HIVnegBiospyPerformedComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegBiospyPerformedComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegBiospyPerformedComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegBiospyPerformedComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegBiospyPerformedComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegBiospyPerformedComposition.setCompositionString("1 and (2 or 3)");
+        CompositionCohortDefinition HIVnegBiopsyPerformedComposition=new CompositionCohortDefinition();
+        HIVnegBiopsyPerformedComposition.setName("HIVnegBiopsyPerformedComposition");
+        HIVnegBiopsyPerformedComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegBiopsyPerformedComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegBiopsyPerformedComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegBiopsyPerformedComposition.getSearches().put("2",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegBiopsyPerformedComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegBiopsyPerformedComposition.setCompositionString("1 and (2 or 3)");
 
-        CohortIndicator HIVnegBiospyPerformedCompositionIndicator = Indicators.newCountIndicator("HIVnegBiospyPerformedCompositionIndicator",
-                HIVnegBiospyPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegBiopsyPerformedCompositionIndicator = Indicators.newCountIndicator("HIVnegBiopsyPerformedCompositionIndicator",
+                HIVnegBiopsyPerformedComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D33HIVneg", "Number of HIV negative and all cervical biopsies(LEEP/Suspected cancer) performed", new Mapped(
-                HIVnegBiospyPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D33HIVneg", "Number of HIV negative and all cervical biopsies(LEEP/Suspected cancer) performed", new Mapped(
+                HIVnegBiopsyPerformedCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2444,59 +2486,59 @@ public class SetupHMISCancerScreeningDashboardreport {
 
 
 
-        CompositionCohortDefinition BiospyPerformedTreatedWithLEEPComposition=new CompositionCohortDefinition();
-        BiospyPerformedTreatedWithLEEPComposition.setName("BiospyPerformedTreatedWithLEEPComposition");
-        BiospyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        BiospyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        BiospyPerformedTreatedWithLEEPComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        BiospyPerformedTreatedWithLEEPComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-//        BiospyPerformedTreatedWithLEEPComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
-        BiospyPerformedTreatedWithLEEPComposition.setCompositionString("1 AND 2 ");
+        CompositionCohortDefinition BiopsyPerformedTreatedWithLEEPComposition=new CompositionCohortDefinition();
+        BiopsyPerformedTreatedWithLEEPComposition.setName("BiopsyPerformedTreatedWithLEEPComposition");
+        BiopsyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        BiopsyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        BiopsyPerformedTreatedWithLEEPComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        BiopsyPerformedTreatedWithLEEPComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+//        BiopsyPerformedTreatedWithLEEPComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
+        BiopsyPerformedTreatedWithLEEPComposition.setCompositionString("1 AND 2 ");
 
-        CohortIndicator BiospyPerformedTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("BiospyPerformedTreatedWithLEEPCompositionIndicator",
-                BiospyPerformedTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator BiopsyPerformedTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("BiopsyPerformedTreatedWithLEEPCompositionIndicator",
+                BiopsyPerformedTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D34", "Number of Biopsies for women treated with LEEP", new Mapped(
-                BiospyPerformedTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D34", "Number of Biopsies for women treated with LEEP", new Mapped(
+                BiopsyPerformedTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D34HIVpos====================================================
 
 
 
-        CompositionCohortDefinition HIVposBiospyPerformedTreatedWithLEEPComposition=new CompositionCohortDefinition();
-        HIVposBiospyPerformedTreatedWithLEEPComposition.setName("HIVposBiospyPerformedTreatedWithLEEPComposition");
-        HIVposBiospyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVposBiospyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVposBiospyPerformedTreatedWithLEEPComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVposBiospyPerformedTreatedWithLEEPComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVposBiospyPerformedTreatedWithLEEPComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVposBiospyPerformedTreatedWithLEEPComposition.setCompositionString("1 AND 2 and 3 ");
+        CompositionCohortDefinition HIVposBiopsyPerformedTreatedWithLEEPComposition=new CompositionCohortDefinition();
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.setName("HIVposBiopsyPerformedTreatedWithLEEPComposition");
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivPositivePatient, null));
+        HIVposBiopsyPerformedTreatedWithLEEPComposition.setCompositionString("1 AND 2 and 3 ");
 
-        CohortIndicator HIVposBiospyPerformedTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVposBiospyPerformedTreatedWithLEEPCompositionIndicator",
-                HIVposBiospyPerformedTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVposBiopsyPerformedTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVposBiopsyPerformedTreatedWithLEEPCompositionIndicator",
+                HIVposBiopsyPerformedTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D34HIVpos", "Number of HIV positive and Biopsies for women treated with LEEP", new Mapped(
-                HIVposBiospyPerformedTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D34HIVpos", "Number of HIV positive and Biopsies for women treated with LEEP", new Mapped(
+                HIVposBiopsyPerformedTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D34HIVneg====================================================
 
 
 
-        CompositionCohortDefinition HIVnegBiospyPerformedTreatedWithLEEPComposition=new CompositionCohortDefinition();
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.setName("HIVnegBiospyPerformedTreatedWithLEEPComposition");
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivNegativePatient, null));
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivUnknownPatient, null));
-        HIVnegBiospyPerformedTreatedWithLEEPComposition.setCompositionString("1 AND 2 and (3 or 4)");
+        CompositionCohortDefinition HIVnegBiopsyPerformedTreatedWithLEEPComposition=new CompositionCohortDefinition();
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.setName("HIVnegBiopsyPerformedTreatedWithLEEPComposition");
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("1",new Mapped<CohortDefinition>(biopsyPerformsResults, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("3",new Mapped<CohortDefinition>(hivNegativePatient, null));
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivUnknownPatient, null));
+        HIVnegBiopsyPerformedTreatedWithLEEPComposition.setCompositionString("1 AND 2 and (3 or 4)");
 
-        CohortIndicator HIVnegBiospyPerformedTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVnegBiospyPerformedTreatedWithLEEPCompositionIndicator",
-                HIVnegBiospyPerformedTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
+        CohortIndicator HIVnegBiopsyPerformedTreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVnegBiopsyPerformedTreatedWithLEEPCompositionIndicator",
+                HIVnegBiopsyPerformedTreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D34HIVneg", "Number of HIV negative and Biopsies for women treated with LEEP", new Mapped(
-                HIVnegBiospyPerformedTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D34HIVneg", "Number of HIV negative and Biopsies for women treated with LEEP", new Mapped(
+                HIVnegBiopsyPerformedTreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2516,8 +2558,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator treatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("treatedWithLEEPCompositionIndicator",
                 treatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D35", "Number of women Treated with LEEP", new Mapped(
-                treatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D35", "Number of women Treated with LEEP", new Mapped(
+                treatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D35HIVpos ====================================================
@@ -2535,8 +2577,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVpostreatedWithLEEPCompositionIndicator",
                 HIVpostreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D35HIVpos", "Number of women HIV positive and Treated with LEEP", new Mapped(
-                HIVpostreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D35HIVpos", "Number of women HIV positive and Treated with LEEP", new Mapped(
+                HIVpostreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D35HIVneg ====================================================
@@ -2555,8 +2597,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtreatedWithLEEPCompositionIndicator = Indicators.newCountIndicator("HIVnegtreatedWithLEEPCompositionIndicator",
                 HIVnegtreatedWithLEEPComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D35HIVneg", "Number of women HIV negative and Treated with LEEP", new Mapped(
-                HIVnegtreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D35HIVneg", "Number of women HIV negative and Treated with LEEP", new Mapped(
+                HIVnegtreatedWithLEEPCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2579,8 +2621,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator postTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("postTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator",
                 postTreatedafterLEEPOrThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D36", "Number of women treated in the previous year for precancerous lesions who returned for a post treatment follow-up screening test at 1 year", new Mapped(
-                postTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D36", "Number of women treated in the previous year for precancerous lesions who returned for a post treatment follow-up screening test at 1 year", new Mapped(
+                postTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D36HIVpos====================================================
@@ -2600,8 +2642,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpospostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVpospostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator",
                 HIVpospostTreatedafterLEEPOrThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D36HIVpos", "Number of women HIV positive and treated in the previous year for precancerous lesions who returned for a post treatment follow-up screening test at 1 year", new Mapped(
-                HIVpospostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D36HIVpos", "Number of women HIV positive and treated in the previous year for precancerous lesions who returned for a post treatment follow-up screening test at 1 year", new Mapped(
+                HIVpospostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D36HIVneg====================================================
@@ -2622,8 +2664,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVnegpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator",
                 HIVnegpostTreatedafterLEEPOrThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D36HIVneg", "Number of women HIV positive and treated in the previous year for precancerous lesions who returned for a post treatment follow-up screening test at 1 year", new Mapped(
-                HIVnegpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D36HIVneg", "Number of women HIV positive and treated in the previous year for precancerous lesions who returned for a post treatment follow-up screening test at 1 year", new Mapped(
+                HIVnegpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2635,8 +2677,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         treatmentInLastYearComposition.setName("treatmentInLastYearComposition");
         treatmentInLastYearComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
         treatmentInLastYearComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        treatmentInLastYearComposition.getSearches().put("1",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+24m},endDate=${endDate+12m}")));
-        treatmentInLastYearComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+24m},endDate=${endDate+12m}")));
+        treatmentInLastYearComposition.getSearches().put("1",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+12m},endDate=${endDate+24m}")));
+        treatmentInLastYearComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+12m},endDate=${endDate+24m}")));
 //        treatmentInLastYearComposition.getSearches().put("1",new Mapped<CohortDefinition>(postTreatmentFollowupAsFollowupReason, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 //        treatmentInLastYearComposition.getSearches().put("4",new Mapped<CohortDefinition>(female, null));
         treatmentInLastYearComposition.setCompositionString("1 or 2");
@@ -2644,8 +2686,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator treatmentInLastYearCompositionIndicator = Indicators.newCountIndicator("treatmentInLastYearCompositionIndicator",
                 treatmentInLastYearComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D37", "Number of women treated in the previous year for precancerous lesions", new Mapped(
-                treatmentInLastYearCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D37", "Number of women treated in the previous year for precancerous lesions", new Mapped(
+                treatmentInLastYearCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
         // ==================== D37HIVpos====================================================
@@ -2656,20 +2698,20 @@ public class SetupHMISCancerScreeningDashboardreport {
         HIVposTreatedLastYearComposition.setName("HIVposTreatedLastYearComposition");
         HIVposTreatedLastYearComposition.addParameter(new Parameter("startDate", "startDate", Date.class));
         HIVposTreatedLastYearComposition.addParameter(new Parameter("endDate", "endDate", Date.class));
-        HIVposTreatedLastYearComposition.getSearches().put("1",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+24m},endDate=${endDate+12m}")));
-        HIVposTreatedLastYearComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+24m},endDate=${endDate+12m}")));
+        HIVposTreatedLastYearComposition.getSearches().put("1",new Mapped<CohortDefinition>(ThermalAblationAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+12m},endDate=${endDate+24m}")));
+        HIVposTreatedLastYearComposition.getSearches().put("2",new Mapped<CohortDefinition>(LEEPAsTypeOfTreatment, ParameterizableUtil.createParameterMappings("startDate=${startDate+12m},endDate=${endDate+24m}")));
 //        HIVposTreatedLastYearComposition.getSearches().put("3",new Mapped<CohortDefinition>(postTreatmentFollowupAsFollowupReason, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
         HIVposTreatedLastYearComposition.getSearches().put("4",new Mapped<CohortDefinition>(hivPositivePatient, null));
-        HIVposTreatedLastYearComposition.setCompositionString("1 and 2 AND 4 ");
+        HIVposTreatedLastYearComposition.setCompositionString("(1 or 2) AND 4 ");
 
         CohortIndicator HIVposTreatedLastYearCompositionIndicator = Indicators.newCountIndicator("HIVposTreatedLastYearCompositionIndicator",
                 HIVposTreatedLastYearComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D37HIVpos", "Number of women HIV positive and treated in the previous year for precancerous lesions", new Mapped(
-                HIVposTreatedLastYearCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D37HIVpos", "Number of women HIV positive and treated in the previous year for precancerous lesions", new Mapped(
+                HIVposTreatedLastYearCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
-        // ==================== D36HIVneg====================================================
+        // ==================== D37HIVneg====================================================
 
 
 
@@ -2687,8 +2729,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegTreatedLastYearCompositionIndicator = Indicators.newCountIndicator("HIVnegTreatedLastYearCompositionIndicator",
                 HIVnegTreatedLastYearComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D37HIVneg", "Number of women HIV negative and treated in the previous year for precancerous lesions", new Mapped(
-                HIVnegTreatedLastYearCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D37HIVneg", "Number of women HIV negative and treated in the previous year for precancerous lesions", new Mapped(
+                HIVnegTreatedLastYearCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2711,8 +2753,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator VIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("VIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator",
                 VIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D38", "Number of women who received a negative screening test result at their post-treatment follow-up at 1 year", new Mapped(
-                VIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D38", "Number of women who received a negative screening test result at their post-treatment follow-up at 1 year", new Mapped(
+                VIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D38HIVpos====================================================
 
@@ -2731,8 +2773,8 @@ public class SetupHMISCancerScreeningDashboardreport {
                 HIVposVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
 
-        dsd.addColumn("D38HIVpos", "Number of women who a HIV positive and received a negative screening test result at their post-treatment follow-up at 1 year", new Mapped(
-                HIVposVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D38HIVpos", "Number of women who a HIV positive and received a negative screening test result at their post-treatment follow-up at 1 year", new Mapped(
+                HIVposVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D37HIVneg====================================================
 
@@ -2751,8 +2793,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator = Indicators.newCountIndicator("HIVnegVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator",
                 HIVnegVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D38HIVneg", "Number of women who a HIV negative and received a negative screening test result at their post-treatment follow-up at 1 year", new Mapped(
-                HIVnegVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D38HIVneg", "Number of women who a HIV negative and received a negative screening test result at their post-treatment follow-up at 1 year", new Mapped(
+                HIVnegVIANegAtpostTreatedafterLEEPOrThermalAblationTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
 
 
@@ -2776,8 +2818,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator testedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicator = Indicators.newCountIndicator("testedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicator",
                 testedViaTriageNegativeAsResutsAndLEEPTreatmentComposition, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D39", "Number of HPV+ & VIA Triage- women treated with LEEP", new Mapped(
-                testedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D39", "Number of HPV+ & VIA Triage- women treated with LEEP", new Mapped(
+                testedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D39HIVpos ====================================================
 
@@ -2797,8 +2839,8 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVpostestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator = Indicators.newCountIndicator("HIVpostestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator",
                 HIVpostestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D39HIVpos", "Number of HIV positive and HPV+ & VIA Triage- women treated with LEEP", new Mapped(
-                HIVpostestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D39HIVpos", "Number of HIV positive and HPV+ & VIA Triage- women treated with LEEP", new Mapped(
+                HIVpostestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
         // ==================== D39HIVneg ====================================================
 
@@ -2819,10 +2861,15 @@ public class SetupHMISCancerScreeningDashboardreport {
         CohortIndicator HIVnegtestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator = Indicators.newCountIndicator("HIVnegtestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator",
                 HIVnegtestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}"));
 
-        dsd.addColumn("D39HIVneg", "Number of HIV negative and HPV+ & VIA Triage- women treated with LEEP", new Mapped(
-                HIVnegtestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator, ParameterizableUtil.createParameterMappings("endDate=${endDate},startDate=${startDate}")), "");
+        addIndicatorSpec(indicatorSpecs, "D39HIVneg", "Number of HIV negative and HPV+ & VIA Triage- women treated with LEEP", new Mapped(
+                HIVnegtestedViaTriageNegativeAsResutsAndLEEPTreatmentCompositionIndicatorIndicator, ParameterizableUtil.createParameterMappings("startDate=${startDate},endDate=${endDate}")));
 
+        return indicatorSpecs;
+    }
 
+    private void addIndicatorSpec(Map<String, IndicatorSpec> indicatorSpecs, String key, String label,
+                                  Mapped<CohortIndicator> mappedIndicator) {
+        indicatorSpecs.put(key, new IndicatorSpec(key, label, mappedIndicator));
     }
 
     private void setUpProperties() {
@@ -2891,11 +2938,15 @@ public class SetupHMISCancerScreeningDashboardreport {
         muzimaOncologyScreeningLabResults=Context.getFormService().getFormByUuid("3a0e1a09-c88a-4412-99c6-cdbd7add50fd");
         muzimaOncologyScreeningLabRequest=Context.getFormService().getFormByUuid("f2a044dd-2dd9-41f8-bfac-ea6c54d044bc");
         OncologyScreeningLabRequest=Context.getFormService().getFormByUuid("39c9442c-aa69-472b-bf03-da28483c1598");
+        muzimaOncologyScreeningDiagnosis = Context.getFormService().getForm("muzima oncology screening Diagnosis");
+        oncologyScreeningDiagnosis = Context.getFormService().getForm("Oncology Screening Diagnosis");
 
 
         breastCancerScreeningForms.add(mUzimaBreastCancerScreening);
         breastCancerScreeningForms.add(oncologyBreastScreeningExamination);
         breastCancerScreeningForms.add(muzimaBreastCancerFollowup);
+        breastCancerScreeningForms.add(muzimaOncologyScreeningDiagnosis);
+        breastCancerScreeningForms.add(oncologyScreeningDiagnosis);
 
         screeningCervicalForms.add(oncologyCervicalScreeningExamination);
         screeningCervicalForms.add(mUzimaCervicalScreening);
@@ -2905,6 +2956,9 @@ public class SetupHMISCancerScreeningDashboardreport {
         screeningCervicalForms.add(muzimaOncologyScreeningLabResults);
         screeningCervicalForms.add(muzimaOncologyScreeningLabRequest);
         screeningCervicalForms.add(OncologyScreeningLabRequest);
+        screeningCervicalForms.add(muzimaOncologyScreeningDiagnosis);
+        screeningCervicalForms.add(oncologyScreeningDiagnosis);
+
 
 
         screeningExaminationForms.add(oncologyBreastScreeningExamination);
@@ -2916,13 +2970,15 @@ public class SetupHMISCancerScreeningDashboardreport {
         screeningExaminationForms.add(muzimaBreastCancerFollowup);
         screeningExaminationForms.add(oncologyScreeningLabResultsForm);
         screeningExaminationForms.add(muzimaOncologyScreeningLabResults);
+        screeningExaminationForms.add(muzimaOncologyScreeningDiagnosis);
+        screeningExaminationForms.add(oncologyScreeningDiagnosis);
 
 
 
 
         // *********************************************************************************
 
-        mUzimaBreastScreening=Context.getFormService().getForm("mUzima Breast cancer screening");
+//        mUzimaBreastScreening=Context.getFormService().getForm("mUzima Breast cancer screening");
 
         parameterNames.add("onOrBefore");
         parameterNames.add("onOrAfter");
@@ -3031,8 +3087,7 @@ public class SetupHMISCancerScreeningDashboardreport {
         breastExaminationAnswers.add(ABNORMAL);
         breastExaminationAnswers.add(NORMAL);
 
-        muzimaOncologyScreeningDiagnosis = Context.getFormService().getForm("muzima oncology screening Diagnosis");
-        oncologyScreeningDiagnosis = Context.getFormService().getForm("Oncology Screening Diagnosis");
+
 
         diagnosisScreeningForms.add(muzimaOncologyScreeningDiagnosis);
         diagnosisScreeningForms.add(oncologyScreeningDiagnosis);
@@ -3047,4 +3102,3 @@ public class SetupHMISCancerScreeningDashboardreport {
         DrugPrescribed = Context.getConceptService().getConceptByUuid("c28bc221-065e-4716-a9b0-b959239bc102");
     }
 }
-
